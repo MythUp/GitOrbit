@@ -1,6 +1,6 @@
 // Purpose: Provide lightweight inline SVG icons used across launcher navigation and profile entries.
 interface IconProps {
-  name: "home" | "compass" | "plus" | "github";
+  name: "home" | "compass" | "plus" | "github" | "search" | "user";
   className?: string;
 }
 
@@ -25,6 +25,28 @@ export default function Icon({ name, className }: IconProps) {
     return (
       <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
         <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (name === "search") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M10.5 3a7.5 7.5 0 1 0 4.7 13.3l4 4 1.4-1.4-4-4A7.5 7.5 0 0 0 10.5 3Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z"
+          fill="currentColor"
+        />
+      </svg>
+    );
+  }
+
+  if (name === "user") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M12 12a4.5 4.5 0 1 0-4.5-4.5A4.5 4.5 0 0 0 12 12Zm0 2c-3.5 0-7 1.8-7 4v2h14v-2c0-2.2-3.5-4-7-4Z"
+          fill="currentColor"
+        />
       </svg>
     );
   }

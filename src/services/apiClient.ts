@@ -15,6 +15,8 @@ import {
 } from "../types/models";
 
 const MANIFEST_TTL_MS = 10 * 60 * 1000;
+const REPOSITORY_TTL_MS = 5 * 60 * 1000;
+const REPOSITORY_STORAGE_PREFIX = "launcher.repositories.cache.v1";
 
 const manifestCache = new Map<
   string,
@@ -26,8 +28,98 @@ const manifestCache = new Map<
 
 const manifestInFlight = new Map<string, Promise<RepositoryItem>>();
 
+const repositoryCache = new Map<
+  string,
+  {
+    value: RepositoryItem[];
+    expiresAt: number;
+  }
+>();
+
+const repositoryInFlight = new Map<string, Promise<RepositoryItem[]>>();
+
 function manifestKey(owner: string, repo: string): string {
   return `${owner.trim().toLowerCase()}/${repo.trim().toLowerCase()}`;
+}
+
+function repositoryKey(owner: string): string {
+  return owner.trim().toLowerCase();
+}
+
+function repositoryStorageKey(owner: string): string {
+  return `${REPOSITORY_STORAGE_PREFIX}:${repositoryKey(owner)}`;
+}
+
+function loadRepositoryCacheFromStorage(owner: string): RepositoryItem[] | null {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(repositoryStorageKey(owner));
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as {
+      value?: RepositoryItem[];
+      expiresAt?: number;
+    };
+
+    if (!parsed.value || !Array.isArray(parsed.value) || !parsed.expiresAt) {
+      return null;
+    }
+
+    if (parsed.expiresAt <= Date.now()) {
+      window.localStorage.removeItem(repositoryStorageKey(owner));
+      return null;
+    }
+
+    repositoryCache.set(repositoryKey(owner), {
+      value: parsed.value,
+      expiresAt: parsed.expiresAt
+    });
+
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+function saveRepositoryCache(owner: string, repositories: RepositoryItem[]): void {
+  const entry = {
+    value: repositories,
+    expiresAt: Date.now() + REPOSITORY_TTL_MS
+  };
+
+  repositoryCache.set(repositoryKey(owner), entry);
+
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(repositoryStorageKey(owner), JSON.stringify(entry));
+  } catch {
+    // Ignore storage errors and keep in-memory cache only.
+  }
+}
+
+function clearRepositoryCache(): void {
+  repositoryCache.clear();
+  repositoryInFlight.clear();
+
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    Object.keys(window.localStorage)
+      .filter((key) => key.startsWith(REPOSITORY_STORAGE_PREFIX + ":"))
+      .forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // Ignore storage errors.
+  }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -100,8 +192,48 @@ export const apiClient = {
   },
 
   listRepositories(owner: string): Promise<RepositoryItem[]> {
+    const memoryEntry = repositoryCache.get(repositoryKey(owner));
+    if (memoryEntry && memoryEntry.expiresAt > Date.now()) {
+      return Promise.resolve(memoryEntry.value);
+    }
+
+    const stored = loadRepositoryCacheFromStorage(owner);
+    if (stored) {
+      return Promise.resolve(stored);
+    }
+
+    return this.refreshRepositories(owner);
+  },
+
+  getCachedRepositories(owner: string): RepositoryItem[] | null {
+    const key = repositoryKey(owner);
+    const memoryEntry = repositoryCache.get(key);
+    if (memoryEntry && memoryEntry.expiresAt > Date.now()) {
+      return memoryEntry.value;
+    }
+
+    return loadRepositoryCacheFromStorage(owner);
+  },
+
+  refreshRepositories(owner: string): Promise<RepositoryItem[]> {
+    const key = repositoryKey(owner);
+    const pending = repositoryInFlight.get(key);
+    if (pending) {
+      return pending;
+    }
+
     const encoded = encodeURIComponent(owner.trim());
-    return request<RepositoryItem[]>(`/api/github/repos?owner=${encoded}`);
+    const promise = request<RepositoryItem[]>(`/api/github/repos?owner=${encoded}`)
+      .then((repositories) => {
+        saveRepositoryCache(owner, repositories);
+        return repositories;
+      })
+      .finally(() => {
+        repositoryInFlight.delete(key);
+      });
+
+    repositoryInFlight.set(key, promise);
+    return promise;
   },
 
   fetchManifest(owner: string, repo: string): Promise<RepositoryItem> {
@@ -172,11 +304,18 @@ export const apiClient = {
     });
   },
 
-  setGithubToken(accessToken: string): Promise<{ status: string }> {
-    return request<{ status: string }>("/api/auth/github/token", {
+  getGithubAuthStatus(): Promise<{ connected: boolean }> {
+    return request<{ connected: boolean }>("/api/auth/github/status");
+  },
+
+  async setGithubToken(accessToken: string): Promise<{ status: string }> {
+    const result = await request<{ status: string }>("/api/auth/github/token", {
       method: "POST",
       body: JSON.stringify({ access_token: accessToken })
     });
+
+    clearRepositoryCache();
+    return result;
   },
 
   deployFtp(payload: FTPDeployRequest): Promise<DeployResult> {

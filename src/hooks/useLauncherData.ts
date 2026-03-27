@@ -38,6 +38,7 @@ export function useLauncherData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [githubWarning, setGithubWarning] = useState<string | null>(null);
+  const [githubConnected, setGithubConnected] = useState(false);
 
   const [profiles, setProfiles] = useState<ProfilesConfig>(defaultProfilesConfig());
   const [selectedProfileId, setSelectedProfileId] = useState<string>("profile-MythUp");
@@ -64,15 +65,32 @@ export function useLauncherData() {
     setInstances(data);
   }, []);
 
+  const refreshGithubAuthStatus = useCallback(async () => {
+    try {
+      const status = await apiClient.getGithubAuthStatus();
+      setGithubConnected(status.connected);
+    } catch {
+      setGithubConnected(false);
+    }
+  }, []);
+
   const refreshRepositories = useCallback(async (owner: string) => {
     const requestId = repositoriesRequestRef.current + 1;
     repositoriesRequestRef.current = requestId;
 
-    setRepositoriesLoading(true);
-    setRepositories([]);
+    const cached = apiClient.getCachedRepositories(owner);
+
+    if (cached) {
+      setRepositories(cached);
+      setRepositoriesLoading(false);
+      setGithubWarning(null);
+    } else {
+      setRepositoriesLoading(true);
+      setRepositories([]);
+    }
 
     try {
-      const data = await apiClient.listRepositories(owner);
+      const data = await apiClient.refreshRepositories(owner);
       if (repositoriesRequestRef.current !== requestId) {
         return;
       }
@@ -83,8 +101,12 @@ export function useLauncherData() {
         return;
       }
 
-      setRepositories([]);
-      setGithubWarning(err instanceof Error ? err.message : "GitHub API request failed.");
+      if (!cached) {
+        setRepositories([]);
+      }
+
+      const fallbackMessage = err instanceof Error ? err.message : "GitHub API request failed.";
+      setGithubWarning(cached ? `${fallbackMessage} Showing cached repositories.` : fallbackMessage);
     } finally {
       if (repositoriesRequestRef.current === requestId) {
         setRepositoriesLoading(false);
@@ -99,6 +121,7 @@ export function useLauncherData() {
     try {
       await apiClient.startBackend();
       await apiClient.waitForBackend();
+      await refreshGithubAuthStatus();
 
       const [profilesData, instancesData] = await Promise.all([
         apiClient.getProfiles().catch(() => defaultProfilesConfig()),
@@ -123,7 +146,7 @@ export function useLauncherData() {
       const firstVisible = mergedItems.find((item) => !item.hidden);
       if (firstVisible) {
         setSelectedProfileId(firstVisible.id);
-        await refreshRepositories(ownerFromGithubUrl(firstVisible.url));
+        void refreshRepositories(ownerFromGithubUrl(firstVisible.url));
       }
 
       setInstances(instancesData);
@@ -132,11 +155,21 @@ export function useLauncherData() {
     } finally {
       setLoading(false);
     }
-  }, [refreshRepositories]);
+  }, [refreshGithubAuthStatus, refreshRepositories]);
 
   useEffect(() => {
     void loadBootstrapData();
   }, [loadBootstrapData]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshGithubAuthStatus();
+    }, 15000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [refreshGithubAuthStatus]);
 
   const persistProfiles = useCallback(async (next: ProfilesConfig) => {
     setProfiles(next);
@@ -302,6 +335,7 @@ export function useLauncherData() {
     visibleProfiles,
     selectedProfileId,
     selectedOwner,
+    githubConnected,
     repositories,
     repositoriesLoading,
     githubWarning,
@@ -317,6 +351,7 @@ export function useLauncherData() {
     saveInstance,
     loadInstanceInput,
     updateInstance,
+    refreshGithubAuthStatus,
     refreshInstances,
     refreshRepositories
   };

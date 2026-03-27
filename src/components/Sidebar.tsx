@@ -1,7 +1,8 @@
-// Purpose: Render left navigation with icon-driven actions and a real contextual menu for profile items.
-import { MouseEvent, useEffect, useMemo, useState } from "react";
+// Purpose: Render left navigation with icon-driven actions, avatar profile badges, and cursor-positioned context menu.
+import { MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { SidebarFolder, SidebarProfileItem } from "../types/models";
+import { ownerFromGithubUrl } from "../utils/github";
 
 interface SidebarProps {
   profiles: SidebarProfileItem[];
@@ -16,7 +17,9 @@ interface SidebarProps {
   onShowSearch: () => void;
   onShowHome: () => void;
   onShowInstances: () => void;
-  currentView: "home" | "repositories" | "search" | "instances";
+  onShowAccount: () => void;
+  githubConnected: boolean;
+  currentView: "home" | "repositories" | "search" | "instances" | "account";
 }
 
 export default function Sidebar({
@@ -32,15 +35,26 @@ export default function Sidebar({
   onShowSearch,
   onShowHome,
   onShowInstances,
+  onShowAccount,
+  githubConnected,
   currentView
 }: SidebarProps) {
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     open: boolean;
+    x: number;
+    y: number;
     profileId: string;
   }>({
     open: false,
+    x: 0,
+    y: 0,
     profileId: ""
   });
+  const [avatarFallbackMap, setAvatarFallbackMap] = useState<Record<string, boolean>>({});
+  const [draggedProfileId, setDraggedProfileId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [mouseDragSourceId, setMouseDragSourceId] = useState<string | null>(null);
 
   const profileMap = useMemo(() => {
     const map = new Map<string, SidebarProfileItem>();
@@ -61,29 +75,146 @@ export default function Sidebar({
     };
   }, []);
 
-  function handleContextMenu(event: MouseEvent, id: string): void {
+  useEffect(() => {
+    if (!contextMenu.open || !contextMenuRef.current) {
+      return;
+    }
+
+    const menu = contextMenuRef.current;
+    const menuWidth = menu.offsetWidth || 160;
+    const menuHeight = menu.offsetHeight || 88;
+
+    let left = contextMenu.x + 8;
+    if (left + menuWidth > window.innerWidth - 8) {
+      left = contextMenu.x - menuWidth - 8;
+    }
+
+    let top = contextMenu.y + 8;
+    if (top + menuHeight > window.innerHeight - 8) {
+      top = Math.max(8, window.innerHeight - menuHeight - 8);
+    }
+
+    left = Math.max(8, left);
+    top = Math.max(8, top);
+
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!mouseDragSourceId) {
+      return;
+    }
+
+    function finalizeMouseDrag(event: MouseEvent): void {
+      const sourceId = mouseDragSourceId;
+      const targetId = dropTargetId;
+
+      setMouseDragSourceId(null);
+      setDraggedProfileId(null);
+      setDropTargetId(null);
+
+      if (!sourceId || !targetId || sourceId === targetId) {
+        return;
+      }
+
+      if (event.altKey) {
+        onDropToFolder(sourceId, targetId);
+      } else {
+        onReorder(sourceId, targetId);
+      }
+    }
+
+    window.addEventListener("mouseup", finalizeMouseDrag);
+    return () => {
+      window.removeEventListener("mouseup", finalizeMouseDrag);
+    };
+  }, [dropTargetId, mouseDragSourceId, onDropToFolder, onReorder]);
+
+  function handleContextMenu(event: ReactMouseEvent, id: string): void {
     event.preventDefault();
     setContextMenu({
       open: true,
+      x: event.clientX,
+      y: event.clientY,
       profileId: id
     });
   }
 
+  function avatarUrl(profile: SidebarProfileItem): string {
+    const owner = ownerFromGithubUrl(profile.url) || profile.name;
+    return `https://github.com/${owner}.png?size=96`;
+  }
+
+  function renderProfileVisual(profile: SidebarProfileItem): JSX.Element {
+    if (avatarFallbackMap[profile.id]) {
+      return <Icon name="github" className="profile-icon" />;
+    }
+
+    return (
+      <img
+        src={avatarUrl(profile)}
+        alt={profile.name}
+        className="profile-avatar"
+        draggable={false}
+        onError={() => setAvatarFallbackMap((current) => ({ ...current, [profile.id]: true }))}
+      />
+    );
+  }
+
+  function onMouseDragStart(event: ReactMouseEvent, sourceId: string): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    setMouseDragSourceId(sourceId);
+    setDraggedProfileId(sourceId);
+    setDropTargetId(sourceId);
+  }
+
+  function onMouseDragEnter(targetId: string): void {
+    if (!mouseDragSourceId) {
+      return;
+    }
+
+    setDropTargetId(targetId);
+  }
+
   function onDragStart(event: React.DragEvent, sourceId: string): void {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-launcher-profile-id", sourceId);
     event.dataTransfer.setData("text/plain", sourceId);
+    setDraggedProfileId(sourceId);
+    setDropTargetId(sourceId);
+  }
+
+  function onDragOver(event: React.DragEvent, targetId: string): void {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTargetId(targetId);
+  }
+
+  function onDragEnd(): void {
+    setDraggedProfileId(null);
+    setDropTargetId(null);
   }
 
   function onDrop(event: React.DragEvent, targetId: string): void {
     event.preventDefault();
-    const sourceId = event.dataTransfer.getData("text/plain");
+    const sourceId =
+      event.dataTransfer.getData("application/x-launcher-profile-id") ||
+      event.dataTransfer.getData("text/plain");
+    setDropTargetId(null);
+    setDraggedProfileId(null);
+
     if (!sourceId || sourceId === targetId) {
       return;
     }
 
-    if (event.shiftKey) {
-      onReorder(sourceId, targetId);
-    } else {
+    if (event.altKey) {
       onDropToFolder(sourceId, targetId);
+    } else {
+      onReorder(sourceId, targetId);
     }
   }
 
@@ -137,17 +268,22 @@ export default function Sidebar({
                     key={item!.id}
                     className={`profile-badge ${
                       currentView === "repositories" && selectedId === item!.id ? "selected" : ""
+                    } ${draggedProfileId === item!.id ? "dragging" : ""} ${
+                      dropTargetId === item!.id ? "drop-target" : ""
                     }`}
                     onClick={() => onSelect(item!.id)}
                     onContextMenu={(event) => handleContextMenu(event, item!.id)}
                     draggable
                     onDragStart={(event) => onDragStart(event, item!.id)}
-                    onDragOver={(event) => event.preventDefault()}
+                    onDragOver={(event) => onDragOver(event, item!.id)}
+                    onDragEnd={onDragEnd}
                     onDrop={(event) => onDrop(event, item!.id)}
+                    onMouseDown={(event) => onMouseDragStart(event, item!.id)}
+                    onMouseEnter={() => onMouseDragEnter(item!.id)}
                     type="button"
-                    title={`${item!.name} (drop to folder, hold Shift to reorder)`}
+                    title={`${item!.name} (drag to reorder, hold Alt while dropping to create folder)`}
                   >
-                    <Icon name="github" className="profile-icon" />
+                    {renderProfileVisual(item!)}
                   </button>
                 ))}
             </div>
@@ -163,23 +299,40 @@ export default function Sidebar({
               key={profile.id}
               className={`profile-badge ${
                 currentView === "repositories" && selectedId === profile.id ? "selected" : ""
+              } ${draggedProfileId === profile.id ? "dragging" : ""} ${
+                dropTargetId === profile.id ? "drop-target" : ""
               }`}
               onClick={() => onSelect(profile.id)}
               onContextMenu={(event) => handleContextMenu(event, profile.id)}
               draggable
               onDragStart={(event) => onDragStart(event, profile.id)}
-              onDragOver={(event) => event.preventDefault()}
+              onDragOver={(event) => onDragOver(event, profile.id)}
+              onDragEnd={onDragEnd}
               onDrop={(event) => onDrop(event, profile.id)}
+              onMouseDown={(event) => onMouseDragStart(event, profile.id)}
+              onMouseEnter={() => onMouseDragEnter(profile.id)}
               type="button"
-              title={`${profile.name} (drop to folder, hold Shift to reorder)`}
+              title={`${profile.name} (drag to reorder, hold Alt while dropping to create folder)`}
             >
-              <Icon name="github" className="profile-icon" />
+              {renderProfileVisual(profile)}
             </button>
           ))}
       </div>
 
+        <button
+          className={`sidebar-icon sidebar-bottom-button ${currentView === "account" ? "active" : ""} ${
+            githubConnected ? "account-connected" : ""
+          }`}
+          onClick={onShowAccount}
+          title="Account"
+          type="button"
+        >
+          <Icon name="user" className="nav-icon" />
+        </button>
+
       {contextMenu.open && (
         <div
+            ref={contextMenuRef}
           className="sidebar-context-menu"
           onClick={(event) => event.stopPropagation()}
         >
