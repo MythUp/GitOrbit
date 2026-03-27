@@ -1,0 +1,19 @@
+# Purpose: Declare Rust dependencies and build configuration for the Tauri desktop shell.
+[package]
+name = "launcher_desktop"
+version = "0.1.0"
+description = "Local launcher desktop shell"
+authors = ["Launcher Team"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+once_cell = "1.20"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "1.5", features = ["shell-open"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

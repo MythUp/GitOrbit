@@ -1,0 +1,259 @@
+/* Purpose: Define visual system and responsive layout for the launcher desktop interface. */
+:root {
+  --bg-start: #101b27;
+  --bg-end: #162c3f;
+  --panel: rgba(15, 28, 40, 0.85);
+  --panel-strong: #0f2433;
+  --accent: #f0a53a;
+  --accent-soft: #f6c97f;
+  --text: #f3f4f6;
+  --muted: #aeb6c1;
+  --danger: #ff7373;
+  --border: rgba(255, 255, 255, 0.14);
+  --shadow: 0 20px 40px rgba(0, 0, 0, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at 15% 20%, #27435d, transparent 30%),
+    radial-gradient(circle at 85% 10%, #385665, transparent 35%),
+    linear-gradient(140deg, var(--bg-start), var(--bg-end));
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  position: relative;
+}
+
+.sidebar {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  box-shadow: var(--shadow);
+}
+
+.sidebar-icon,
+.profile-badge {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: #1d3347;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.sidebar-icon:hover,
+.profile-badge:hover {
+  transform: translateY(-2px);
+  background: #274863;
+}
+
+.sidebar-icon.active,
+.profile-badge.selected {
+  border-color: var(--accent-soft);
+  background: #365773;
+}
+
+.sidebar-divider {
+  width: 70%;
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}
+
+.folder-group {
+  width: 100%;
+}
+
+.folder-toggle {
+  width: 100%;
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.folder-items,
+.profile-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.content-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding-bottom: 100px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  animation: panel-in 0.35s ease;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+.search-form,
+.instance-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+input,
+button {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #142938;
+  color: var(--text);
+  padding: 10px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.repo-list,
+.search-results,
+.instance-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.repo-card,
+.search-row,
+.instance-card,
+.home-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--panel-strong);
+}
+
+.repo-actions,
+.auth-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.bottom-right {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: min(460px, calc(100vw - 32px));
+}
+
+.auth-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.auth-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: #2e4e65;
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 920px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    flex-direction: row;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .folder-group,
+  .profile-list {
+    display: flex;
+    flex-direction: row;
+    width: auto;
+  }
+
+  .bottom-right {
+    position: static;
+    width: 100%;
+  }
+}
