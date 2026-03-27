@@ -1,15 +1,18 @@
 // Purpose: Provide GitHub search UI to discover profiles, organizations, and repositories.
 import { FormEvent, useState } from "react";
+import { apiClient } from "../services/apiClient";
 import { SearchResultItem } from "../types/models";
 
 interface SearchPanelProps {
   onSearch: (query: string) => Promise<SearchResultItem[]>;
   onAddProfileUrl: (url: string) => Promise<void>;
+  onInstall: (owner: string, repo: string) => void;
 }
 
-export default function SearchPanel({ onSearch, onAddProfileUrl }: SearchPanelProps) {
+export default function SearchPanel({ onSearch, onAddProfileUrl, onInstall }: SearchPanelProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [compatibilityMap, setCompatibilityMap] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,8 +23,27 @@ export default function SearchPanel({ onSearch, onAddProfileUrl }: SearchPanelPr
     try {
       const data = await onSearch(query);
       setResults(data);
+
+      const repoItems = data.filter((item) => item.type === "repo" && item.owner && item.repo);
+      const nextMap: Record<number, boolean> = {};
+      for (const item of repoItems) {
+        try {
+          const manifestResponse = await apiClient.fetchManifest(item.owner!, item.repo!);
+          nextMap[item.id] = Boolean(manifestResponse.manifest?.launcher.compatible);
+        } catch (error) {
+          nextMap[item.id] = false;
+          if (error instanceof Error && error.message.includes("rate limit")) {
+            break;
+          }
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+
+      setCompatibilityMap(nextMap);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
+      setCompatibilityMap({});
     } finally {
       setLoading(false);
     }
@@ -56,6 +78,20 @@ export default function SearchPanel({ onSearch, onAddProfileUrl }: SearchPanelPr
             {(item.type === "user" || item.type === "org") && (
               <button type="button" onClick={() => onAddProfileUrl(item.url)}>
                 Add to Sidebar
+              </button>
+            )}
+            {item.type === "repo" && (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!compatibilityMap[item.id] || !item.owner || !item.repo}
+                onClick={() => {
+                  if (item.owner && item.repo) {
+                    onInstall(item.owner, item.repo);
+                  }
+                }}
+              >
+                Install
               </button>
             )}
           </li>

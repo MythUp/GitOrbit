@@ -1,10 +1,13 @@
-// Purpose: Manage project instances and collect deployment credentials in a structured form.
-import { FormEvent, useState } from "react";
+// Purpose: Manage creation and modification of instances, including install-prefill from selected repositories.
+import { FormEvent, useEffect, useState } from "react";
 import { InstanceInput, InstanceRecord } from "../types/models";
 
 interface InstanceManagerProps {
   instances: InstanceRecord[];
   onSaveInstance: (input: InstanceInput) => Promise<void>;
+  onUpdateInstance: (id: string, input: InstanceInput) => Promise<void>;
+  onLoadInstance: (id: string) => Promise<InstanceInput>;
+  installDraft: { owner: string; repo: string } | null;
 }
 
 const EMPTY_FORM: InstanceInput = {
@@ -18,21 +21,72 @@ const EMPTY_FORM: InstanceInput = {
   ftpRemotePath: "/"
 };
 
-export default function InstanceManager({ instances, onSaveInstance }: InstanceManagerProps) {
+export default function InstanceManager({
+  instances,
+  onSaveInstance,
+  onUpdateInstance,
+  onLoadInstance,
+  installDraft
+}: InstanceManagerProps) {
   const [form, setForm] = useState<InstanceInput>(EMPTY_FORM);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  useEffect(() => {
+    if (!installDraft || editingId) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      owner: installDraft.owner,
+      repo: installDraft.repo,
+      name: current.name || `${installDraft.repo}-instance`
+    }));
+  }, [installDraft, editingId]);
+
+  async function startEdit(id: string): Promise<void> {
+    setLoadingDetails(true);
+    setStatus(null);
+    try {
+      const input = await onLoadInstance(id);
+      setEditingId(id);
+      setForm(input);
+      setStatus("Edit mode enabled.");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Unable to load this instance.");
+    } finally {
+      setLoadingDetails(false);
+    }
+  }
+
+  function resetEditor(): void {
+    setEditingId(null);
+    setForm({
+      ...EMPTY_FORM,
+      owner: installDraft?.owner || "",
+      repo: installDraft?.repo || "",
+      name: installDraft ? `${installDraft.repo}-instance` : ""
+    });
+  }
 
   async function handleSubmit(event: FormEvent): Promise<void> {
     event.preventDefault();
     setSaving(true);
     setStatus(null);
     try {
-      await onSaveInstance(form);
-      setStatus("Instance saved successfully.");
-      setForm(EMPTY_FORM);
+      if (editingId) {
+        await onUpdateInstance(editingId, form);
+        setStatus("Instance updated successfully.");
+      } else {
+        await onSaveInstance(form);
+        setStatus("Instance created successfully.");
+      }
+      resetEditor();
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Failed to save instance");
+      setStatus(err instanceof Error ? err.message : "Failed to save instance.");
     } finally {
       setSaving(false);
     }
@@ -40,8 +94,14 @@ export default function InstanceManager({ instances, onSaveInstance }: InstanceM
 
   return (
     <section className="panel">
-      <h2>Instances</h2>
+      <h2>Create Instances</h2>
       <p>Create multiple deployment instances per repository with encrypted credentials.</p>
+
+      {editingId ? (
+        <p className="badge-warning">Editing existing instance</p>
+      ) : (
+        <p className="badge-success">Creating new instance</p>
+      )}
 
       <form className="instance-form" onSubmit={handleSubmit}>
         <input
@@ -124,8 +184,13 @@ export default function InstanceManager({ instances, onSaveInstance }: InstanceM
           placeholder="SQL DSN (optional)"
         />
         <button type="submit" disabled={saving}>
-          {saving ? "Saving..." : "Save Instance"}
+          {saving ? "Saving..." : editingId ? "Update" : "Create"}
         </button>
+        {editingId && (
+          <button type="button" onClick={resetEditor} className="btn-secondary">
+            Cancel
+          </button>
+        )}
       </form>
 
       {status && <p>{status}</p>}
@@ -133,13 +198,23 @@ export default function InstanceManager({ instances, onSaveInstance }: InstanceM
       <ul className="instance-list">
         {instances.map((instance) => (
           <li key={instance.id} className="instance-card">
-            <strong>{instance.name}</strong>
-            <p>
-              {instance.owner}/{instance.repo}
-            </p>
-            <small>
-              SSH: {instance.has_ssh ? "yes" : "no"} | SQL: {instance.has_sql ? "yes" : "no"}
-            </small>
+            <div>
+              <strong>{instance.name}</strong>
+              <p>
+                {instance.owner}/{instance.repo}
+              </p>
+              <small>
+                SSH: {instance.has_ssh ? "yes" : "no"} | SQL: {instance.has_sql ? "yes" : "no"}
+              </small>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={loadingDetails}
+              onClick={() => void startEdit(instance.id)}
+            >
+              Edit
+            </button>
           </li>
         ))}
       </ul>

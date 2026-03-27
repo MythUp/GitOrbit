@@ -1,5 +1,5 @@
-// Purpose: Compose the launcher interface and orchestrate interactions across core frontend features.
-import { useEffect, useMemo, useState } from "react";
+// Purpose: Compose launcher navigation and route install actions into the instance workflow.
+import { useMemo, useState } from "react";
 import AuthPanel from "./components/AuthPanel";
 import DeploymentPanel from "./components/DeploymentPanel";
 import HomeView from "./components/HomeView";
@@ -9,7 +9,7 @@ import SearchPanel from "./components/SearchPanel";
 import Sidebar from "./components/Sidebar";
 import { useLauncherData } from "./hooks/useLauncherData";
 
-type ViewMode = "home" | "repositories" | "search";
+type ViewMode = "home" | "repositories" | "search" | "instances";
 
 export default function App() {
   const {
@@ -20,6 +20,8 @@ export default function App() {
     selectedProfileId,
     selectedOwner,
     repositories,
+    repositoriesLoading,
+    githubWarning,
     instances,
     addProfile,
     hideProfile,
@@ -30,23 +32,20 @@ export default function App() {
     selectProfile,
     searchGithub,
     saveInstance,
+    loadInstanceInput,
+    updateInstance,
     refreshInstances,
     refreshRepositories
   } = useLauncherData();
 
   const [view, setView] = useState<ViewMode>("repositories");
+  const [installDraft, setInstallDraft] = useState<{ owner: string; repo: string } | null>(null);
   const folders = useMemo(() => profiles.folders || [], [profiles.folders]);
 
-  useEffect(() => {
-    function refreshOnManifestCheck() {
-      void refreshRepositories(selectedOwner);
-    }
-
-    window.addEventListener("refresh-repositories", refreshOnManifestCheck);
-    return () => {
-      window.removeEventListener("refresh-repositories", refreshOnManifestCheck);
-    };
-  }, [refreshRepositories, selectedOwner]);
+  function startInstall(owner: string, repo: string): void {
+    setInstallDraft({ owner, repo });
+    setView("instances");
+  }
 
   if (loading) {
     return <main className="app-shell">Loading launcher...</main>;
@@ -83,18 +82,37 @@ export default function App() {
         }}
         onShowSearch={() => setView("search")}
         onShowHome={() => setView("home")}
+        onShowInstances={() => setView("instances")}
         currentView={view}
       />
 
       <section className="content-shell">
+        {githubWarning && <div className="warning-banner">{githubWarning}</div>}
+
         {view === "home" && <HomeView instances={instances} />}
-        {view === "search" && <SearchPanel onSearch={searchGithub} onAddProfileUrl={addProfile} />}
+        {view === "search" && (
+          <SearchPanel onSearch={searchGithub} onAddProfileUrl={addProfile} onInstall={startInstall} />
+        )}
         {view === "repositories" && (
-          <RepositoryList owner={selectedOwner} repositories={repositories} />
+          <RepositoryList
+            owner={selectedOwner}
+            repositories={repositories}
+            onInstall={startInstall}
+            loading={repositoriesLoading}
+          />
         )}
 
-        <InstanceManager instances={instances} onSaveInstance={saveInstance} />
-        <DeploymentPanel />
+        {view === "instances" && (
+          <InstanceManager
+            instances={instances}
+            onSaveInstance={saveInstance}
+            onUpdateInstance={updateInstance}
+            onLoadInstance={loadInstanceInput}
+            installDraft={installDraft}
+          />
+        )}
+
+        {(view === "home" || view === "instances") && <DeploymentPanel instances={instances} />}
       </section>
 
       <footer className="bottom-right">

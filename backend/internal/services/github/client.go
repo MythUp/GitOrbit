@@ -10,6 +10,7 @@ import (
   "net/url"
   "path"
   "strings"
+  "sync"
   "time"
 
   "launcher/backend/internal/models"
@@ -18,12 +19,21 @@ import (
 const apiBaseURL = "https://api.github.com"
 
 type Client struct {
-  httpClient *http.Client
+  httpClient    *http.Client
+  cacheMu       sync.Mutex
+  manifestCache map[string]manifestCacheEntry
+}
+
+type manifestCacheEntry struct {
+  manifest   *models.LauncherManifest
+  expiresAt  time.Time
+  hasValue   bool
 }
 
 func NewClient() *Client {
   return &Client{
-    httpClient: &http.Client{Timeout: 20 * time.Second},
+    httpClient:    &http.Client{Timeout: 20 * time.Second},
+    manifestCache: map[string]manifestCacheEntry{},
   }
 }
 
@@ -90,12 +100,28 @@ func (client *Client) ListRepositories(owner string, token string) ([]models.Rep
 }
 
 func (client *Client) FetchManifest(owner, repo, token string) (*models.LauncherManifest, error) {
+  cacheKey := strings.ToLower(strings.TrimSpace(owner) + "/" + strings.TrimSpace(repo))
+
+  client.cacheMu.Lock()
+  if entry, ok := client.manifestCache[cacheKey]; ok && time.Now().Before(entry.expiresAt) && entry.hasValue {
+    client.cacheMu.Unlock()
+    return entry.manifest, nil
+  }
+  client.cacheMu.Unlock()
+
   endpoint := fmt.Sprintf("/repos/%s/%s/contents/manifest.json", url.PathEscape(owner), url.PathEscape(repo))
   payload, status, err := client.doJSON(http.MethodGet, endpoint, token)
   if err != nil {
     return nil, err
   }
   if status == http.StatusNotFound {
+    client.cacheMu.Lock()
+    client.manifestCache[cacheKey] = manifestCacheEntry{
+      manifest:  nil,
+      expiresAt: time.Now().Add(10 * time.Minute),
+      hasValue:  true,
+    }
+    client.cacheMu.Unlock()
     return nil, nil
   }
 
@@ -117,6 +143,14 @@ func (client *Client) FetchManifest(owner, repo, token string) (*models.Launcher
   if err := json.Unmarshal(rawManifest, &manifest); err != nil {
     return nil, fmt.Errorf("decode manifest: %w", err)
   }
+
+  client.cacheMu.Lock()
+  client.manifestCache[cacheKey] = manifestCacheEntry{
+    manifest:  &manifest,
+    expiresAt: time.Now().Add(10 * time.Minute),
+    hasValue:  true,
+  }
+  client.cacheMu.Unlock()
 
   return &manifest, nil
 }
@@ -181,12 +215,22 @@ func (client *Client) searchRepos(query, token string) ([]models.SearchResultIte
 
   results := make([]models.SearchResultItem, 0, len(response.Items))
   for _, item := range response.Items {
+    parts := strings.SplitN(item.FullName, "/", 2)
+    owner := ""
+    repo := ""
+    if len(parts) == 2 {
+      owner = parts[0]
+      repo = parts[1]
+    }
+
     results = append(results, models.SearchResultItem{
       ID:          item.ID,
       Type:        "repo",
       Name:        item.FullName,
       URL:         item.HTMLURL,
       Description: item.Description,
+      Owner:       owner,
+      Repo:        repo,
     })
   }
 

@@ -54,6 +54,9 @@ export interface SearchResultItem {
   name: string;
   url: string;
   description?: string;
+  owner?: string;
+  repo?: string;
+  compatible?: boolean;
 }
 
 export interface InstanceInput {
@@ -83,6 +86,11 @@ export interface InstanceRecord {
   has_sql: boolean;
 }
 
+export interface InstanceDetailResponse {
+  id: string;
+  input: InstanceInput;
+}
+
 export interface DeviceFlowStartResponse {
   device_code: string;
   user_code: string;
@@ -104,6 +112,12 @@ export interface FTPDeployRequest {
   port: number;
   username: string;
   password: string;
+  rollback_on_fail: boolean;
+}
+
+export interface FTPDeployByInstanceRequest {
+  instance_id: string;
+  local_path: string;
   rollback_on_fail: boolean;
 }
 

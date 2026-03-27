@@ -10,6 +10,7 @@ export default function AuthPanel({ onConnected }: AuthPanelProps) {
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
   const [userCode, setUserCode] = useState<string | null>(null);
   const [verificationUri, setVerificationUri] = useState<string | null>(null);
+  const [manualToken, setManualToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<string>("Not connected");
 
@@ -22,7 +23,14 @@ export default function AuthPanel({ onConnected }: AuthPanelProps) {
       setVerificationUri(data.verification_uri);
       setStatus("Complete verification in browser, then click Check Login.");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Failed to start login");
+      const message = err instanceof Error ? err.message : "Failed to start login";
+      if (message.includes("device_flow_disabled")) {
+        setStatus(
+          "Device Flow is disabled for this GitHub OAuth App. Enable Device Flow in GitHub OAuth settings, or use a Personal Access Token below."
+        );
+      } else {
+        setStatus(message);
+      }
     }
   }
 
@@ -53,6 +61,23 @@ export default function AuthPanel({ onConnected }: AuthPanelProps) {
     await onConnected();
   }
 
+  async function applyManualToken(): Promise<void> {
+    if (!manualToken.trim()) {
+      setStatus("Enter a Personal Access Token before submitting.");
+      return;
+    }
+
+    try {
+      await apiClient.setGithubToken(manualToken.trim());
+      setConnected(true);
+      setManualToken("");
+      setStatus("Connected using Personal Access Token.");
+      await onConnected();
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Invalid token");
+    }
+  }
+
   return (
     <section className="auth-panel">
       <div className="auth-avatar">AC</div>
@@ -72,6 +97,16 @@ export default function AuthPanel({ onConnected }: AuthPanelProps) {
           </button>
           <button type="button" onClick={() => void pollLogin()} disabled={!deviceCode}>
             Check Login
+          </button>
+          <input
+            type="password"
+            value={manualToken}
+            onChange={(event) => setManualToken(event.target.value)}
+            placeholder="Personal Access Token"
+            aria-label="Personal Access Token"
+          />
+          <button type="button" className="btn-secondary" onClick={() => void applyManualToken()}>
+            Use Token
           </button>
         </div>
       ) : (

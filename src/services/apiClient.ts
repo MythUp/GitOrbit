@@ -4,13 +4,31 @@ import {
   DeployResult,
   DeviceFlowPollResponse,
   DeviceFlowStartResponse,
+  FTPDeployByInstanceRequest,
   FTPDeployRequest,
+  InstanceDetailResponse,
   InstanceInput,
   InstanceRecord,
   ProfilesConfig,
   RepositoryItem,
   SearchResultItem
 } from "../types/models";
+
+const MANIFEST_TTL_MS = 10 * 60 * 1000;
+
+const manifestCache = new Map<
+  string,
+  {
+    value: RepositoryItem;
+    expiresAt: number;
+  }
+>();
+
+const manifestInFlight = new Map<string, Promise<RepositoryItem>>();
+
+function manifestKey(owner: string, repo: string): string {
+  return `${owner.trim().toLowerCase()}/${repo.trim().toLowerCase()}`;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BACKEND_BASE_URL}${path}`, {
@@ -25,7 +43,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const data = (await response.json().catch(() => ({ error: "Request failed" }))) as {
       error?: string;
     };
-    throw new Error(data.error || `Request failed with status ${response.status}`);
+
+    const errorMessage = data.error || `Request failed with status ${response.status}`;
+    if (response.status === 403 && errorMessage.includes("API rate limit exceeded")) {
+      throw new Error(
+        "GitHub API rate limit exceeded. Please authenticate (GitHub token/device flow) or wait before retrying."
+      );
+    }
+
+    throw new Error(errorMessage);
   }
 
   return (await response.json()) as T;
@@ -79,9 +105,33 @@ export const apiClient = {
   },
 
   fetchManifest(owner: string, repo: string): Promise<RepositoryItem> {
+    const key = manifestKey(owner, repo);
+    const cached = manifestCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      return Promise.resolve(cached.value);
+    }
+
+    const pending = manifestInFlight.get(key);
+    if (pending) {
+      return pending;
+    }
+
     const ownerQuery = encodeURIComponent(owner.trim());
     const repoQuery = encodeURIComponent(repo.trim());
-    return request<RepositoryItem>(`/api/github/manifest?owner=${ownerQuery}&repo=${repoQuery}`);
+    const promise = request<RepositoryItem>(`/api/github/manifest?owner=${ownerQuery}&repo=${repoQuery}`)
+      .then((value) => {
+        manifestCache.set(key, {
+          value,
+          expiresAt: Date.now() + MANIFEST_TTL_MS
+        });
+        return value;
+      })
+      .finally(() => {
+        manifestInFlight.delete(key);
+      });
+
+    manifestInFlight.set(key, promise);
+    return promise;
   },
 
   listInstances(): Promise<InstanceRecord[]> {
@@ -91,6 +141,19 @@ export const apiClient = {
   saveInstance(instance: InstanceInput): Promise<{ status: string }> {
     return request<{ status: string }>("/api/instances", {
       method: "POST",
+      body: JSON.stringify(instance)
+    });
+  },
+
+  getInstanceDetail(id: string): Promise<InstanceDetailResponse> {
+    const encoded = encodeURIComponent(id);
+    return request<InstanceDetailResponse>(`/api/instances?id=${encoded}`);
+  },
+
+  updateInstance(id: string, instance: InstanceInput): Promise<{ status: string }> {
+    const encoded = encodeURIComponent(id);
+    return request<{ status: string }>(`/api/instances?id=${encoded}`, {
+      method: "PUT",
       body: JSON.stringify(instance)
     });
   },
@@ -118,6 +181,13 @@ export const apiClient = {
 
   deployFtp(payload: FTPDeployRequest): Promise<DeployResult> {
     return request<DeployResult>("/api/deploy/ftp", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+
+  deployFtpByInstance(payload: FTPDeployByInstanceRequest): Promise<DeployResult> {
+    return request<DeployResult>("/api/deploy/ftp/instance", {
       method: "POST",
       body: JSON.stringify(payload)
     });

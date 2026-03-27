@@ -35,6 +35,10 @@ type APIServer struct {
 }
 
 func NewServer(logger *log.Logger) (*http.Server, error) {
+  if err := config.LoadDotEnvIfPresent(".env"); err != nil {
+    logger.Printf("warning: failed to load .env file: %v", err)
+  }
+
   paths, err := config.ResolvePaths()
   if err != nil {
     return nil, err
@@ -86,6 +90,7 @@ func (api *APIServer) registerRoutes(mux *http.ServeMux) {
   mux.HandleFunc("/api/auth/github/device/poll", api.handlePollDeviceFlow)
   mux.HandleFunc("/api/auth/github/token", api.handleSetToken)
   mux.HandleFunc("/api/deploy/ftp", api.handleDeployFTP)
+  mux.HandleFunc("/api/deploy/ftp/instance", api.handleDeployFTPByInstance)
 }
 
 func (api *APIServer) handleHealth(writer http.ResponseWriter, request *http.Request) {
@@ -124,6 +129,21 @@ func (api *APIServer) handleProfiles(writer http.ResponseWriter, request *http.R
 func (api *APIServer) handleInstances(writer http.ResponseWriter, request *http.Request) {
   switch request.Method {
   case http.MethodGet:
+    instanceID := strings.TrimSpace(request.URL.Query().Get("id"))
+    if instanceID != "" {
+      input, err := api.deps.InstancesStore.GetInstanceInput(instanceID)
+      if err != nil {
+        writeError(writer, http.StatusNotFound, err.Error())
+        return
+      }
+
+      writeJSON(writer, http.StatusOK, models.InstanceDetailResponse{
+        ID:    instanceID,
+        Input: input,
+      })
+      return
+    }
+
     list, err := api.deps.InstancesStore.ListRecords()
     if err != nil {
       writeError(writer, http.StatusInternalServerError, err.Error())
@@ -141,6 +161,24 @@ func (api *APIServer) handleInstances(writer http.ResponseWriter, request *http.
       return
     }
     writeJSON(writer, http.StatusOK, map[string]string{"status": "saved"})
+  case http.MethodPut:
+    instanceID := strings.TrimSpace(request.URL.Query().Get("id"))
+    if instanceID == "" {
+      writeError(writer, http.StatusBadRequest, "id is required")
+      return
+    }
+
+    var payload models.InstanceInput
+    if err := decodeJSON(request.Body, &payload); err != nil {
+      writeError(writer, http.StatusBadRequest, err.Error())
+      return
+    }
+
+    if err := api.deps.InstancesStore.UpdateInstance(instanceID, payload); err != nil {
+      writeError(writer, http.StatusBadRequest, err.Error())
+      return
+    }
+    writeJSON(writer, http.StatusOK, map[string]string{"status": "updated"})
   default:
     writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
   }
@@ -196,22 +234,13 @@ func (api *APIServer) handleGitHubManifest(writer http.ResponseWriter, request *
     writeError(writer, http.StatusBadGateway, err.Error())
     return
   }
-
-  repos, err := api.deps.GitHub.ListRepositories(owner, token)
-  if err != nil {
-    writeError(writer, http.StatusBadGateway, err.Error())
-    return
-  }
-
-  for _, item := range repos {
-    if strings.EqualFold(item.Name, repo) {
-      item.Manifest = manifest
-      writeJSON(writer, http.StatusOK, item)
-      return
-    }
-  }
-
-  writeError(writer, http.StatusNotFound, "repository not found")
+  writeJSON(writer, http.StatusOK, models.RepositoryItem{
+    Owner:    owner,
+    Name:     repo,
+    FullName: owner + "/" + repo,
+    HTMLURL:  "https://github.com/" + owner + "/" + repo,
+    Manifest: manifest,
+  })
 }
 
 func (api *APIServer) handleStartDeviceFlow(writer http.ResponseWriter, request *http.Request) {
@@ -297,10 +326,47 @@ func (api *APIServer) handleDeployFTP(writer http.ResponseWriter, request *http.
   writeJSON(writer, http.StatusOK, result)
 }
 
+func (api *APIServer) handleDeployFTPByInstance(writer http.ResponseWriter, request *http.Request) {
+  if request.Method != http.MethodPost {
+    writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+    return
+  }
+
+  var payload models.FTPDeployByInstanceRequest
+  if err := decodeJSON(request.Body, &payload); err != nil {
+    writeError(writer, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  instance, err := api.deps.InstancesStore.GetInstanceInput(payload.InstanceID)
+  if err != nil {
+    writeError(writer, http.StatusNotFound, err.Error())
+    return
+  }
+
+  deployRequest := models.FTPDeployRequest{
+    LocalPath:      payload.LocalPath,
+    RemotePath:     instance.FTPRemotePath,
+    Host:           instance.FTPHost,
+    Port:           instance.FTPPort,
+    Username:       instance.FTPUsername,
+    Password:       instance.FTPPassword,
+    RollbackOnFail: payload.RollbackOnFail,
+  }
+
+  result, err := api.deps.FTPEngine.Deploy(context.Background(), deployRequest)
+  if err != nil {
+    writeError(writer, http.StatusBadRequest, err.Error())
+    return
+  }
+
+  writeJSON(writer, http.StatusOK, result)
+}
+
 func withCORS(next http.Handler) http.Handler {
   return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
     writer.Header().Set("Access-Control-Allow-Origin", "*")
-    writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
     writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     if request.Method == http.MethodOptions {

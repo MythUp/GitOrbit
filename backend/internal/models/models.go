@@ -56,6 +56,9 @@ type SearchResultItem struct {
   Name        string `json:"name"`
   URL         string `json:"url"`
   Description string `json:"description,omitempty"`
+  Owner       string `json:"owner,omitempty"`
+  Repo        string `json:"repo,omitempty"`
+  Compatible  *bool  `json:"compatible,omitempty"`
 }
 
 type InstanceInput struct {
@@ -116,6 +119,11 @@ type DeviceFlowPollResponse struct {
   Scope       string `json:"scope"`
 }
 
+type InstanceDetailResponse struct {
+  ID    string        `json:"id"`
+  Input InstanceInput `json:"input"`
+}
+
 type SetTokenRequest struct {
   AccessToken string `json:"access_token"`
 }
@@ -127,6 +135,12 @@ type FTPDeployRequest struct {
   Port           int    `json:"port"`
   Username       string `json:"username"`
   Password       string `json:"password"`
+  RollbackOnFail bool   `json:"rollback_on_fail"`
+}
+
+type FTPDeployByInstanceRequest struct {
+  InstanceID     string `json:"instance_id"`
+  LocalPath      string `json:"local_path"`
   RollbackOnFail bool   `json:"rollback_on_fail"`
 }
 

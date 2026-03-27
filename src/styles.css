@@ -1,16 +1,19 @@
-/* Purpose: Define visual system and responsive layout for the launcher desktop interface. */
+/* Purpose: Define a colorful dashboard-style UI inspired by launcher and bootstrap card patterns. */
 :root {
-  --bg-start: #101b27;
-  --bg-end: #162c3f;
-  --panel: rgba(15, 28, 40, 0.85);
-  --panel-strong: #0f2433;
-  --accent: #f0a53a;
-  --accent-soft: #f6c97f;
-  --text: #f3f4f6;
-  --muted: #aeb6c1;
-  --danger: #ff7373;
-  --border: rgba(255, 255, 255, 0.14);
-  --shadow: 0 20px 40px rgba(0, 0, 0, 0.28);
+  --bg-a: #eef4ff;
+  --bg-b: #f6fff4;
+  --panel: #ffffffcc;
+  --panel-solid: #ffffff;
+  --line: #d9e0f0;
+  --text: #19304d;
+  --muted: #5f718b;
+  --primary: #1f73ff;
+  --primary-hover: #1558c5;
+  --success: #1ea76f;
+  --warning: #f49c3d;
+  --danger: #e34f4f;
+  --purple: #7356f1;
+  --shadow: 0 16px 35px rgba(23, 48, 92, 0.14);
 }
 
 * {
@@ -22,26 +25,28 @@ body,
 #root {
   margin: 0;
   min-height: 100%;
-  font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+  font-family: "Segoe UI", "Calibri", sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at 15% 20%, #27435d, transparent 30%),
-    radial-gradient(circle at 85% 10%, #385665, transparent 35%),
-    linear-gradient(140deg, var(--bg-start), var(--bg-end));
+  background:
+    radial-gradient(circle at 8% 12%, #cbe0ff 0%, transparent 33%),
+    radial-gradient(circle at 86% 8%, #d8ffd8 0%, transparent 35%),
+    linear-gradient(165deg, var(--bg-a), var(--bg-b));
 }
 
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
   position: relative;
 }
 
 .sidebar {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 24px;
+  position: relative;
+  background: linear-gradient(180deg, #2158ff, #6840dd);
+  border: 1px solid #4f6de5;
+  border-radius: 26px;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -52,33 +57,39 @@ body,
 
 .sidebar-icon,
 .profile-badge {
-  width: 58px;
-  height: 58px;
+  width: 56px;
+  height: 56px;
   border-radius: 18px;
-  border: 1px solid var(--border);
-  background: #1d3347;
-  color: var(--text);
+  border: 1px solid #90a4ff55;
+  background: #ffffff1a;
+  color: #f8fbff;
   font-weight: 700;
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.nav-icon,
+.profile-icon {
+  width: 22px;
+  height: 22px;
 }
 
 .sidebar-icon:hover,
 .profile-badge:hover {
-  transform: translateY(-2px);
-  background: #274863;
+  transform: translateY(-1px) scale(1.02);
+  background: #ffffff30;
 }
 
 .sidebar-icon.active,
 .profile-badge.selected {
-  border-color: var(--accent-soft);
-  background: #365773;
+  border-color: #ffffff;
+  background: #ffffff44;
 }
 
 .sidebar-divider {
   width: 70%;
   height: 1px;
-  background: var(--border);
+  background: #ffffff55;
   margin: 8px 0;
 }
 
@@ -88,9 +99,9 @@ body,
 
 .folder-toggle {
   width: 100%;
-  background: transparent;
-  color: var(--muted);
-  border: 1px dashed var(--border);
+  background: #ffffff20;
+  color: #eaf0ff;
+  border: 1px dashed #d7e2ff88;
   border-radius: 10px;
   padding: 6px;
   margin-bottom: 6px;
@@ -106,20 +117,62 @@ body,
   gap: 8px;
 }
 
+.sidebar-context-menu {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 50;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid #cad7ec;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.context-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #18335a;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.context-item:hover {
+  background: #edf4ff;
+}
+
+.context-item.danger {
+  color: #bf2e2e;
+}
+
 .content-shell {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
+  gap: 14px;
   padding-bottom: 100px;
 }
 
 .panel {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 20px;
-  padding: 16px;
+  padding: 18px;
   box-shadow: var(--shadow);
   animation: panel-in 0.35s ease;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.warning-banner {
+  border: 1px solid #ffd49a;
+  background: #fff4e5;
+  color: #8a5300;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-weight: 600;
 }
 
 @keyframes panel-in {
@@ -142,26 +195,45 @@ p {
 .search-form,
 .instance-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 10px;
   margin-bottom: 12px;
 }
 
 input,
+select,
 button {
   border-radius: 10px;
-  border: 1px solid var(--border);
-  background: #142938;
+  border: 1px solid #cad7ec;
+  background: var(--panel-solid);
   color: var(--text);
   padding: 10px;
+  font-size: 0.95rem;
 }
 
 button {
   cursor: pointer;
 }
 
+.btn-primary {
+  background: linear-gradient(180deg, var(--primary), #2f88ff);
+  border-color: #1f73ff;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(180deg, var(--primary-hover), #1c63dd);
+}
+
+.btn-secondary {
+  background: #f4f7ff;
+  border-color: #b9c9ea;
+  color: #24426d;
+}
+
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
@@ -181,12 +253,12 @@ button:disabled {
 .home-card {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid #d7e2f2;
   border-radius: 14px;
-  padding: 12px;
-  background: var(--panel-strong);
+  padding: 14px;
+  background: #ffffff;
 }
 
 .repo-actions,
@@ -194,10 +266,49 @@ button:disabled {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid #cad7ec;
+  background: var(--panel-solid);
+}
+
+.inline-check input {
+  margin: 0;
 }
 
 .error-text {
   color: var(--danger);
+}
+
+.badge-warning,
+.badge-success {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.badge-warning {
+  background: #fff4e5;
+  color: #9f6208;
+  border: 1px solid #ffd49a;
+}
+
+.badge-success {
+  background: #e8fff4;
+  color: #0b7a4f;
+  border: 1px solid #99ebc8;
 }
 
 .home-grid {
@@ -214,14 +325,15 @@ button:disabled {
 }
 
 .auth-panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: linear-gradient(155deg, #ffffff, #edf4ff);
+  border: 1px solid #d0ddf2;
   border-radius: 18px;
-  padding: 12px;
+  padding: 13px;
   box-shadow: var(--shadow);
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .auth-avatar {
@@ -230,19 +342,36 @@ button:disabled {
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: #2e4e65;
-  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--purple), #4f8eff);
+  color: #ffffff;
+  border: 1px solid #9aa9ff;
+  font-weight: 700;
+}
+
+@media (max-width: 1200px) {
+  .bottom-right {
+    position: static;
+    width: 100%;
+  }
+
+  .content-shell {
+    padding-bottom: 8px;
+  }
 }
 
 @media (max-width: 920px) {
   .app-shell {
     grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 12px;
   }
 
   .sidebar {
     flex-direction: row;
     overflow-x: auto;
     justify-content: flex-start;
+    width: 100%;
+    border-radius: 18px;
   }
 
   .folder-group,
@@ -252,8 +381,30 @@ button:disabled {
     width: auto;
   }
 
-  .bottom-right {
-    position: static;
+  .search-form,
+  .instance-form {
+    grid-template-columns: 1fr;
+  }
+
+  .repo-card,
+  .search-row,
+  .instance-card,
+  .home-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .auth-actions {
     width: 100%;
+  }
+
+  .auth-actions input {
+    flex: 1 1 100%;
+  }
+
+  .sidebar-context-menu {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
   }
 }

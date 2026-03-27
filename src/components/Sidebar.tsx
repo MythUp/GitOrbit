@@ -1,5 +1,6 @@
-// Purpose: Render left navigation with profiles, folders, drag-and-drop, and hide/remove actions.
-import { MouseEvent, useMemo } from "react";
+// Purpose: Render left navigation with icon-driven actions and a real contextual menu for profile items.
+import { MouseEvent, useEffect, useMemo, useState } from "react";
+import Icon from "./Icon";
 import { SidebarFolder, SidebarProfileItem } from "../types/models";
 
 interface SidebarProps {
@@ -14,11 +15,8 @@ interface SidebarProps {
   onToggleFolder: (folderId: string) => void;
   onShowSearch: () => void;
   onShowHome: () => void;
-  currentView: "home" | "repositories" | "search";
-}
-
-function profileBadge(name: string): string {
-  return name.slice(0, 2).toUpperCase();
+  onShowInstances: () => void;
+  currentView: "home" | "repositories" | "search" | "instances";
 }
 
 export default function Sidebar({
@@ -33,23 +31,42 @@ export default function Sidebar({
   onToggleFolder,
   onShowSearch,
   onShowHome,
+  onShowInstances,
   currentView
 }: SidebarProps) {
+  const [contextMenu, setContextMenu] = useState<{
+    open: boolean;
+    profileId: string;
+  }>({
+    open: false,
+    profileId: ""
+  });
+
   const profileMap = useMemo(() => {
     const map = new Map<string, SidebarProfileItem>();
     profiles.forEach((item) => map.set(item.id, item));
     return map;
   }, [profiles]);
 
+  useEffect(() => {
+    function closeMenu(): void {
+      setContextMenu((current) => ({ ...current, open: false }));
+    }
+
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
+  }, []);
+
   function handleContextMenu(event: MouseEvent, id: string): void {
     event.preventDefault();
-    const action = window.prompt("Type 'hide' to hide or 'remove' to remove this profile.", "hide");
-    if (action === "hide") {
-      onHide(id);
-    }
-    if (action === "remove") {
-      onRemove(id);
-    }
+    setContextMenu({
+      open: true,
+      profileId: id
+    });
   }
 
   function onDragStart(event: React.DragEvent, sourceId: string): void {
@@ -78,7 +95,16 @@ export default function Sidebar({
         title="Home"
         type="button"
       >
-        HM
+        <Icon name="home" className="nav-icon" />
+      </button>
+
+      <button
+        className={`sidebar-icon ${currentView === "instances" ? "active" : ""}`}
+        onClick={onShowInstances}
+        title="Create Instances"
+        type="button"
+      >
+        <Icon name="plus" className="nav-icon" />
       </button>
 
       <button
@@ -87,7 +113,7 @@ export default function Sidebar({
         title="Search"
         type="button"
       >
-        SR
+        <Icon name="compass" className="nav-icon" />
       </button>
 
       <div className="sidebar-divider" />
@@ -109,7 +135,9 @@ export default function Sidebar({
                 .map((item) => (
                   <button
                     key={item!.id}
-                    className={`profile-badge ${selectedId === item!.id ? "selected" : ""}`}
+                    className={`profile-badge ${
+                      currentView === "repositories" && selectedId === item!.id ? "selected" : ""
+                    }`}
                     onClick={() => onSelect(item!.id)}
                     onContextMenu={(event) => handleContextMenu(event, item!.id)}
                     draggable
@@ -119,7 +147,7 @@ export default function Sidebar({
                     type="button"
                     title={`${item!.name} (drop to folder, hold Shift to reorder)`}
                   >
-                    {profileBadge(item!.name)}
+                    <Icon name="github" className="profile-icon" />
                   </button>
                 ))}
             </div>
@@ -133,7 +161,9 @@ export default function Sidebar({
           .map((profile) => (
             <button
               key={profile.id}
-              className={`profile-badge ${selectedId === profile.id ? "selected" : ""}`}
+              className={`profile-badge ${
+                currentView === "repositories" && selectedId === profile.id ? "selected" : ""
+              }`}
               onClick={() => onSelect(profile.id)}
               onContextMenu={(event) => handleContextMenu(event, profile.id)}
               draggable
@@ -143,10 +173,38 @@ export default function Sidebar({
               type="button"
               title={`${profile.name} (drop to folder, hold Shift to reorder)`}
             >
-              {profileBadge(profile.name)}
+              <Icon name="github" className="profile-icon" />
             </button>
           ))}
       </div>
+
+      {contextMenu.open && (
+        <div
+          className="sidebar-context-menu"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="context-item"
+            onClick={() => {
+              onHide(contextMenu.profileId);
+              setContextMenu((current) => ({ ...current, open: false }));
+            }}
+          >
+            Hide
+          </button>
+          <button
+            type="button"
+            className="context-item danger"
+            onClick={() => {
+              onRemove(contextMenu.profileId);
+              setContextMenu((current) => ({ ...current, open: false }));
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

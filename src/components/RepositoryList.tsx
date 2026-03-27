@@ -1,54 +1,72 @@
-// Purpose: Display repositories for the selected profile and show launcher compatibility status.
-import { useState } from "react";
+// Purpose: Display repositories for the selected profile and trigger installation for compatible projects.
+import { useEffect, useState } from "react";
 import { apiClient } from "../services/apiClient";
 import { RepositoryItem } from "../types/models";
 
 interface RepositoryListProps {
   owner: string;
   repositories: RepositoryItem[];
+  onInstall: (owner: string, repo: string) => void;
+  loading: boolean;
 }
 
-function compatibilityLabel(manifest: RepositoryItem["manifest"] | null | undefined): string {
-  if (!manifest) {
-    return "Unknown";
-  }
-  return manifest.launcher.compatible ? "Compatible" : "Not compatible";
-}
+export default function RepositoryList({ owner, repositories, onInstall, loading }: RepositoryListProps) {
+  const [compatibilityMap, setCompatibilityMap] = useState<Record<number, boolean>>({});
 
-export default function RepositoryList({ owner, repositories }: RepositoryListProps) {
-  const [loadingRepo, setLoadingRepo] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [manifestMap, setManifestMap] = useState<Record<number, RepositoryItem["manifest"] | null>>({});
+  useEffect(() => {
+    let cancelled = false;
 
-  async function checkManifest(repo: RepositoryItem): Promise<void> {
-    setError(null);
-    setLoadingRepo(repo.id);
-    try {
-      const fetched = await apiClient.fetchManifest(repo.owner, repo.name);
-      setManifestMap((current) => ({
-        ...current,
-        [repo.id]: fetched.manifest || null
-      }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Manifest check failed");
-    } finally {
-      setLoadingRepo(null);
+    async function resolveCompatibility(): Promise<void> {
+      setCompatibilityMap({});
+      const next: Record<number, boolean> = {};
+
+      for (const repo of repositories) {
+        if (cancelled) {
+          return;
+        }
+
+        if (repo.manifest) {
+          next[repo.id] = Boolean(repo.manifest.launcher.compatible);
+          setCompatibilityMap({ ...next });
+          continue;
+        }
+
+        try {
+          const item = await apiClient.fetchManifest(repo.owner, repo.name);
+          next[repo.id] = Boolean(item.manifest?.launcher.compatible);
+        } catch (error) {
+          next[repo.id] = false;
+          if (error instanceof Error && error.message.includes("rate limit")) {
+            setCompatibilityMap({ ...next });
+            return;
+          }
+        }
+
+        setCompatibilityMap({ ...next });
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
     }
-  }
+
+    void resolveCompatibility();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [repositories]);
 
   return (
     <section className="panel">
       <h2>Repositories for {owner}</h2>
       <p>
-        Compatible repositories expose a manifest.json with launcher compatibility metadata.
+        Compatibility is loaded automatically from each repository manifest.
       </p>
 
-      {error && <p className="error-text">{error}</p>}
+      {loading && <p>Loading repositories...</p>}
 
       <ul className="repo-list">
         {repositories.map((repo) => {
-          const manifest = manifestMap[repo.id] ?? repo.manifest;
-          const compatible = manifest?.launcher.compatible ?? false;
+          const compatibilityResolved = compatibilityMap[repo.id] !== undefined;
+          const compatible = compatibilityMap[repo.id] === true;
           return (
             <li key={repo.id} className="repo-card">
               <div>
@@ -59,15 +77,12 @@ export default function RepositoryList({ owner, repositories }: RepositoryListPr
               <div className="repo-actions">
                 <button
                   type="button"
-                  onClick={() => checkManifest(repo)}
-                  disabled={loadingRepo === repo.id}
+                  className="btn-primary"
+                  disabled={!compatible || !compatibilityResolved}
+                  onClick={() => onInstall(repo.owner, repo.name)}
                 >
-                  {loadingRepo === repo.id ? "Checking..." : "Check Compatibility"}
+                  Install
                 </button>
-                <button type="button" disabled={!compatible}>
-                  {compatible ? "Install" : "Install (Disabled)"}
-                </button>
-                <small>{compatibilityLabel(manifest)}</small>
               </div>
             </li>
           );

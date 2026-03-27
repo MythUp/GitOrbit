@@ -1,20 +1,20 @@
-// Purpose: Trigger FTP deployment requests from the desktop UI and surface deployment logs.
+// Purpose: Trigger FTP deployments by selected instance so credentials stay scoped per instance.
 import { FormEvent, useState } from "react";
 import { apiClient } from "../services/apiClient";
-import { DeployResult, FTPDeployRequest } from "../types/models";
+import { DeployResult, FTPDeployByInstanceRequest, InstanceRecord } from "../types/models";
 
-const EMPTY_DEPLOY_FORM: FTPDeployRequest = {
+interface DeploymentPanelProps {
+  instances: InstanceRecord[];
+}
+
+const EMPTY_DEPLOY_FORM: FTPDeployByInstanceRequest = {
+  instance_id: "",
   local_path: "",
-  remote_path: "/",
-  host: "",
-  port: 21,
-  username: "",
-  password: "",
   rollback_on_fail: true
 };
 
-export default function DeploymentPanel() {
-  const [form, setForm] = useState<FTPDeployRequest>(EMPTY_DEPLOY_FORM);
+export default function DeploymentPanel({ instances }: DeploymentPanelProps) {
+  const [form, setForm] = useState<FTPDeployByInstanceRequest>(EMPTY_DEPLOY_FORM);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DeployResult | null>(null);
@@ -26,7 +26,7 @@ export default function DeploymentPanel() {
     setResult(null);
 
     try {
-      const response = await apiClient.deployFtp(form);
+      const response = await apiClient.deployFtpByInstance(form);
       setResult(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Deployment failed");
@@ -38,48 +38,30 @@ export default function DeploymentPanel() {
   return (
     <section className="panel">
       <h2>FTP Deployment</h2>
-      <p>Baseline deployment flow with upload/replace, local logs, and rollback on failure.</p>
+      <p>Deploy using credentials from one selected instance.</p>
 
       <form className="instance-form" onSubmit={handleSubmit}>
+        <select
+          aria-label="Select instance"
+          title="Select instance"
+          value={form.instance_id}
+          onChange={(event) => setForm({ ...form, instance_id: event.target.value })}
+          required
+        >
+          <option value="">Select instance</option>
+          {instances.map((instance) => (
+            <option key={instance.id} value={instance.id}>
+              {instance.name} ({instance.owner}/{instance.repo})
+            </option>
+          ))}
+        </select>
         <input
           value={form.local_path}
           onChange={(event) => setForm({ ...form, local_path: event.target.value })}
           placeholder="Local project path"
           required
         />
-        <input
-          value={form.remote_path}
-          onChange={(event) => setForm({ ...form, remote_path: event.target.value })}
-          placeholder="Remote path"
-          required
-        />
-        <input
-          value={form.host}
-          onChange={(event) => setForm({ ...form, host: event.target.value })}
-          placeholder="FTP host"
-          required
-        />
-        <input
-          type="number"
-          value={form.port}
-          onChange={(event) => setForm({ ...form, port: Number(event.target.value) })}
-          placeholder="Port"
-          required
-        />
-        <input
-          value={form.username}
-          onChange={(event) => setForm({ ...form, username: event.target.value })}
-          placeholder="FTP username"
-          required
-        />
-        <input
-          type="password"
-          value={form.password}
-          onChange={(event) => setForm({ ...form, password: event.target.value })}
-          placeholder="FTP password"
-          required
-        />
-        <label>
+        <label className="inline-check">
           <input
             type="checkbox"
             checked={form.rollback_on_fail}

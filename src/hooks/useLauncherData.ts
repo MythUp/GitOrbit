@@ -1,5 +1,5 @@
 // Purpose: Centralize launcher data loading and mutations for profiles, repositories, and instances.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_PROFILE_URLS } from "../config/constants";
 import { apiClient } from "../services/apiClient";
 import {
@@ -37,11 +37,14 @@ function defaultProfilesConfig(): ProfilesConfig {
 export function useLauncherData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [githubWarning, setGithubWarning] = useState<string | null>(null);
 
   const [profiles, setProfiles] = useState<ProfilesConfig>(defaultProfilesConfig());
   const [selectedProfileId, setSelectedProfileId] = useState<string>("profile-MythUp");
   const [repositories, setRepositories] = useState<RepositoryItem[]>([]);
+  const [repositoriesLoading, setRepositoriesLoading] = useState(false);
   const [instances, setInstances] = useState<InstanceRecord[]>([]);
+  const repositoriesRequestRef = useRef(0);
 
   const visibleProfiles = useMemo(
     () => (profiles.items || []).filter((item) => !item.hidden),
@@ -62,8 +65,31 @@ export function useLauncherData() {
   }, []);
 
   const refreshRepositories = useCallback(async (owner: string) => {
-    const data = await apiClient.listRepositories(owner);
-    setRepositories(data);
+    const requestId = repositoriesRequestRef.current + 1;
+    repositoriesRequestRef.current = requestId;
+
+    setRepositoriesLoading(true);
+    setRepositories([]);
+
+    try {
+      const data = await apiClient.listRepositories(owner);
+      if (repositoriesRequestRef.current !== requestId) {
+        return;
+      }
+      setRepositories(data);
+      setGithubWarning(null);
+    } catch (err) {
+      if (repositoriesRequestRef.current !== requestId) {
+        return;
+      }
+
+      setRepositories([]);
+      setGithubWarning(err instanceof Error ? err.message : "GitHub API request failed.");
+    } finally {
+      if (repositoriesRequestRef.current === requestId) {
+        setRepositoriesLoading(false);
+      }
+    }
   }, []);
 
   const loadBootstrapData = useCallback(async () => {
@@ -256,6 +282,19 @@ export function useLauncherData() {
     [refreshInstances]
   );
 
+  const loadInstanceInput = useCallback(async (id: string): Promise<InstanceInput> => {
+    const detail = await apiClient.getInstanceDetail(id);
+    return detail.input;
+  }, []);
+
+  const updateInstance = useCallback(
+    async (id: string, input: InstanceInput) => {
+      await apiClient.updateInstance(id, input);
+      await refreshInstances();
+    },
+    [refreshInstances]
+  );
+
   return {
     loading,
     error,
@@ -264,6 +303,8 @@ export function useLauncherData() {
     selectedProfileId,
     selectedOwner,
     repositories,
+    repositoriesLoading,
+    githubWarning,
     instances,
     addProfile,
     hideProfile,
@@ -274,6 +315,8 @@ export function useLauncherData() {
     selectProfile,
     searchGithub,
     saveInstance,
+    loadInstanceInput,
+    updateInstance,
     refreshInstances,
     refreshRepositories
   };

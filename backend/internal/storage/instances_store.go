@@ -39,8 +39,8 @@ func (store *InstancesStore) ListRecords() ([]models.InstanceRecord, error) {
 }
 
 func (store *InstancesStore) SaveInstance(input models.InstanceInput) error {
-  if input.Name == "" || input.Owner == "" || input.Repo == "" || input.FTPHost == "" || input.FTPUsername == "" || input.FTPPassword == "" {
-    return fmt.Errorf("missing required instance fields")
+  if err := validateInstanceInput(input); err != nil {
+    return err
   }
 
   now := time.Now().UTC().Format(time.RFC3339)
@@ -77,6 +77,98 @@ func (store *InstancesStore) SaveInstance(input models.InstanceInput) error {
   })
 
   return store.writeConfig(cfg)
+}
+
+func (store *InstancesStore) UpdateInstance(id string, input models.InstanceInput) error {
+  if id == "" {
+    return fmt.Errorf("missing instance id")
+  }
+  if err := validateInstanceInput(input); err != nil {
+    return err
+  }
+
+  cfg, err := store.readConfig()
+  if err != nil {
+    return err
+  }
+
+  credentialsPayload, err := json.Marshal(input)
+  if err != nil {
+    return fmt.Errorf("marshal credentials: %w", err)
+  }
+
+  encrypted, err := store.encryption.EncryptString(string(credentialsPayload))
+  if err != nil {
+    return fmt.Errorf("encrypt credentials: %w", err)
+  }
+
+  updated := false
+  now := time.Now().UTC().Format(time.RFC3339)
+  for index := range cfg.Items {
+    if cfg.Items[index].Record.ID != id {
+      continue
+    }
+
+    cfg.Items[index].Record.Name = input.Name
+    cfg.Items[index].Record.Owner = input.Owner
+    cfg.Items[index].Record.Repo = input.Repo
+    cfg.Items[index].Record.UpdatedAt = now
+    cfg.Items[index].Record.HasSSH = input.SSHHost != "" && input.SSHUsername != ""
+    cfg.Items[index].Record.HasSQL = input.SQLDSN != ""
+    cfg.Items[index].EncryptedCredentials = encrypted
+    updated = true
+    break
+  }
+
+  if !updated {
+    return fmt.Errorf("instance not found")
+  }
+
+  return store.writeConfig(cfg)
+}
+
+func (store *InstancesStore) GetInstanceInput(id string) (models.InstanceInput, error) {
+  if id == "" {
+    return models.InstanceInput{}, fmt.Errorf("missing instance id")
+  }
+
+  cfg, err := store.readConfig()
+  if err != nil {
+    return models.InstanceInput{}, err
+  }
+
+  for _, item := range cfg.Items {
+    if item.Record.ID != id {
+      continue
+    }
+
+    decrypted, err := store.encryption.DecryptString(item.EncryptedCredentials)
+    if err != nil {
+      return models.InstanceInput{}, fmt.Errorf("decrypt credentials: %w", err)
+    }
+
+    var input models.InstanceInput
+    if err := json.Unmarshal([]byte(decrypted), &input); err != nil {
+      return models.InstanceInput{}, fmt.Errorf("decode credentials: %w", err)
+    }
+
+    return input, nil
+  }
+
+  return models.InstanceInput{}, fmt.Errorf("instance not found")
+}
+
+func validateInstanceInput(input models.InstanceInput) error {
+  if input.Name == "" || input.Owner == "" || input.Repo == "" || input.FTPHost == "" || input.FTPUsername == "" || input.FTPPassword == "" {
+    return fmt.Errorf("missing required instance fields")
+  }
+  if input.FTPPort <= 0 {
+    return fmt.Errorf("ftp port must be greater than 0")
+  }
+  if input.FTPRemotePath == "" {
+    return fmt.Errorf("ftp remote path is required")
+  }
+  return nil
 }
 
 func (store *InstancesStore) readConfig() (models.InstancesConfig, error) {
