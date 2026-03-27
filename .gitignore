@@ -5,4 +5,5 @@ src-tauri/target/
 src-tauri/gen/
 backend/bin/
 backend/.cache/
+backend/.env
 *.log
