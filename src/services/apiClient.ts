@@ -8,6 +8,7 @@ import {
   FTPDirectoriesResponse,
   FTPDeployByInstanceRequest,
   FTPDeployRequest,
+  InstanceDeploymentStatusResponse,
   InstanceDetailResponse,
   InstanceFTPVersionResponse,
   InstanceInput,
@@ -444,6 +445,11 @@ export const apiClient = {
     return request<InstanceDetailResponse>(`/api/instances?id=${encoded}`);
   },
 
+  getInstanceDeployStatus(id: string): Promise<InstanceDeploymentStatusResponse> {
+    const encoded = encodeURIComponent(id);
+    return request<InstanceDeploymentStatusResponse>(`/api/instances/deploy-status?id=${encoded}`);
+  },
+
   getCachedInstanceFTPVersion(instanceID: string): InstanceFTPVersionResponse | null {
     const cached = instanceVersionCache.get(instanceID);
     if (cached && cached.expiresAt > Date.now()) {
@@ -478,6 +484,13 @@ export const apiClient = {
     return request<{ status: string }>(`/api/instances?id=${encoded}`, {
       method: "PUT",
       body: JSON.stringify(instance)
+    });
+  },
+
+  deleteInstance(id: string): Promise<{ status: string }> {
+    const encoded = encodeURIComponent(id);
+    return request<{ status: string }>(`/api/instances?id=${encoded}`, {
+      method: "DELETE"
     });
   },
 

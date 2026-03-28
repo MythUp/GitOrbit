@@ -128,6 +128,33 @@ func (store *InstancesStore) UpdateInstance(id string, input models.InstanceInpu
 	return store.writeConfig(cfg)
 }
 
+func (store *InstancesStore) DeleteInstance(id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("missing instance id")
+	}
+
+	cfg, err := store.readConfig()
+	if err != nil {
+		return err
+	}
+
+	initialCount := len(cfg.Items)
+	filtered := make([]models.StoredInstance, 0, initialCount)
+	for _, item := range cfg.Items {
+		if item.Record.ID == id {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
+	if len(filtered) == initialCount {
+		return fmt.Errorf("instance not found")
+	}
+
+	cfg.Items = filtered
+	return store.writeConfig(cfg)
+}
+
 func (store *InstancesStore) GetInstanceInput(id string) (models.InstanceInput, error) {
 	if id == "" {
 		return models.InstanceInput{}, fmt.Errorf("missing instance id")

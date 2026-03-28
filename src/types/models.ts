@@ -26,6 +26,8 @@ export interface LauncherCompatibility {
   connection_types: string[];
   requires_sql: boolean;
   sql_schema_path?: string;
+  database_file_path?: string;
+  ssh_commands?: string[];
   notes: string;
   ignore: string[];
 }
@@ -34,6 +36,7 @@ export interface LauncherManifest {
   project_name: string;
   version: string;
   type: "php" | "python" | "html" | "other";
+  database?: string;
   launcher: LauncherCompatibility;
 }
 
@@ -77,6 +80,7 @@ export interface InstanceInput {
   sqlUsername?: string;
   sqlPassword?: string;
   sqlDatabase?: string;
+  siteUrl?: string;
 }
 
 export interface InstanceRecord {
@@ -99,6 +103,16 @@ export interface InstanceFTPVersionResponse {
   instance_id: string;
   version?: string;
   checked_at: string;
+  error?: string;
+}
+
+export interface InstanceDeploymentStatusResponse {
+  instance_id: string;
+  deployed: boolean;
+  remote_manifest_version?: string;
+  latest_git_tag?: string;
+  update_available: boolean;
+  site_url?: string;
   error?: string;
 }
 

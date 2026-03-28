@@ -348,6 +348,14 @@ export function useLauncherData() {
     [refreshInstances]
   );
 
+  const deleteInstance = useCallback(
+    async (id: string) => {
+      await apiClient.deleteInstance(id);
+      await refreshInstances();
+    },
+    [refreshInstances]
+  );
+
   return {
     loading,
     error,
@@ -371,6 +379,7 @@ export function useLauncherData() {
     saveInstance,
     loadInstanceInput,
     updateInstance,
+    deleteInstance,
     refreshGithubAuthStatus,
     refreshInstances,
     refreshRepositories

@@ -16,7 +16,10 @@ export default function Icon({ name, className }: IconProps) {
   if (name === "compass") {
     return (
       <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm3.8 7.2-2.2 6.1-6.1 2.2 2.2-6.1 6.1-2.2Z" fill="currentColor" />
+        <path
+          d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Zm4.2 4.2-5.7 2.1a1 1 0 0 0-.6.6l-2.1 5.7 5.7-2.1a1 1 0 0 0 .6-.6Zm-3 5.8-.8.8-1.1-1.1.8-.8 1.1 1.1Z"
+          fill="currentColor"
+        />
       </svg>
     );
   }

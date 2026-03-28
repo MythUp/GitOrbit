@@ -188,6 +188,38 @@ func (client *Client) FetchManifest(owner, repo, token string) (*models.Launcher
 	return &manifest, nil
 }
 
+func (client *Client) FetchLatestTag(owner, repo, token string) (string, error) {
+	owner = strings.TrimSpace(owner)
+	repo = strings.TrimSpace(repo)
+	if owner == "" || repo == "" {
+		return "", fmt.Errorf("owner and repo are required")
+	}
+
+	endpoint := fmt.Sprintf("/repos/%s/%s/tags?per_page=1", url.PathEscape(owner), url.PathEscape(repo))
+	payload, status, err := client.doJSON(http.MethodGet, endpoint, token)
+	if err != nil {
+		return "", err
+	}
+
+	if status == http.StatusNotFound {
+		return "", nil
+	}
+
+	var response []struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.Unmarshal(payload, &response); err != nil {
+		return "", fmt.Errorf("decode tags response: %w", err)
+	}
+
+	if len(response) == 0 {
+		return "", nil
+	}
+
+	return strings.TrimSpace(response[0].Name), nil
+}
+
 func (client *Client) searchUsers(query, token string) ([]models.SearchResultItem, error) {
 	endpoint := "/search/users?q=" + url.QueryEscape(query) + "+in:login&type=Users&per_page=10"
 	payload, _, err := client.doJSON(http.MethodGet, endpoint, token)

@@ -158,6 +158,46 @@ func (engine *FTPEngine) ListDirectories(ctx context.Context, request models.FTP
 	}, nil
 }
 
+func (engine *FTPEngine) IsRemotePathEmpty(ctx context.Context, input models.InstanceInput) (bool, error) {
+	if input.FTPHost == "" || input.FTPUsername == "" || input.FTPPassword == "" {
+		return false, fmt.Errorf("missing FTP credentials")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	address := net.JoinHostPort(input.FTPHost, fmt.Sprintf("%d", input.FTPPort))
+	connection, err := ftp.Dial(address, ftp.DialWithTimeout(15*time.Second))
+	if err != nil {
+		return false, fmt.Errorf("connect ftp: %w", err)
+	}
+	defer connection.Quit()
+
+	if err := connection.Login(input.FTPUsername, input.FTPPassword); err != nil {
+		return false, fmt.Errorf("ftp login: %w", err)
+	}
+
+	remotePath := strings.TrimSpace(input.FTPRemotePath)
+	if remotePath == "" {
+		remotePath = "/"
+	}
+
+	entries, err := connection.List(remotePath)
+	if err != nil {
+		return false, fmt.Errorf("list remote path %s: %w", remotePath, err)
+	}
+
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name, ".") {
+			continue
+		}
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (engine *FTPEngine) Deploy(ctx context.Context, request models.FTPDeployRequest) (models.DeployResult, error) {
 	result := models.DeployResult{Logs: []string{}}
 

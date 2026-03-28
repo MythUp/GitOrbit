@@ -24,18 +24,21 @@ type ProfilesConfig struct {
 }
 
 type LauncherCompatibility struct {
-	Compatible      bool     `json:"compatible"`
-	ConnectionTypes []string `json:"connection_types"`
-	RequiresSQL     bool     `json:"requires_sql"`
-	SQLSchemaPath   string   `json:"sql_schema_path,omitempty"`
-	Notes           string   `json:"notes"`
-	Ignore          []string `json:"ignore"`
+	Compatible       bool     `json:"compatible"`
+	ConnectionTypes  []string `json:"connection_types"`
+	RequiresSQL      bool     `json:"requires_sql"`
+	SQLSchemaPath    string   `json:"sql_schema_path,omitempty"`
+	DatabaseFilePath string   `json:"database_file_path,omitempty"`
+	SSHCommands      []string `json:"ssh_commands,omitempty"`
+	Notes            string   `json:"notes"`
+	Ignore           []string `json:"ignore"`
 }
 
 type LauncherManifest struct {
 	ProjectName string                `json:"project_name"`
 	Version     string                `json:"version"`
 	Type        string                `json:"type"`
+	Database    string                `json:"database,omitempty"`
 	Launcher    LauncherCompatibility `json:"launcher"`
 }
 
@@ -79,6 +82,7 @@ type InstanceInput struct {
 	SQLUsername   string `json:"sqlUsername,omitempty"`
 	SQLPassword   string `json:"sqlPassword,omitempty"`
 	SQLDatabase   string `json:"sqlDatabase,omitempty"`
+	SiteURL       string `json:"siteUrl,omitempty"`
 }
 
 type InstanceRecord struct {
@@ -138,6 +142,16 @@ type InstanceFTPVersionResponse struct {
 	Version    string `json:"version,omitempty"`
 	CheckedAt  string `json:"checked_at"`
 	Error      string `json:"error,omitempty"`
+}
+
+type InstanceDeploymentStatusResponse struct {
+	InstanceID            string `json:"instance_id"`
+	Deployed              bool   `json:"deployed"`
+	RemoteManifestVersion string `json:"remote_manifest_version,omitempty"`
+	LatestGitTag          string `json:"latest_git_tag,omitempty"`
+	UpdateAvailable       bool   `json:"update_available"`
+	SiteURL               string `json:"site_url,omitempty"`
+	Error                 string `json:"error,omitempty"`
 }
 
 type SetTokenRequest struct {

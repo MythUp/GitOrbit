@@ -17,10 +17,9 @@ interface SidebarProps {
   onToggleFolder: (folderId: string) => void;
   onShowSearch: () => void;
   onShowHome: () => void;
-  onShowInstances: () => void;
   onShowAccount: () => void;
   githubConnected: boolean;
-  currentView: "home" | "repositories" | "search" | "instances" | "account";
+  currentView: "home" | "repositories" | "search" | "account";
 }
 
 export default function Sidebar({
@@ -35,7 +34,6 @@ export default function Sidebar({
   onToggleFolder,
   onShowSearch,
   onShowHome,
-  onShowInstances,
   onShowAccount,
   githubConnected,
   currentView
@@ -206,15 +204,6 @@ export default function Sidebar({
         type="button"
       >
         <Icon name="home" className="nav-icon" />
-      </button>
-
-      <button
-        className={`sidebar-icon ${currentView === "instances" ? "active" : ""}`}
-        onClick={onShowInstances}
-        title="Create Instances"
-        type="button"
-      >
-        <Icon name="plus" className="nav-icon" />
       </button>
 
       <button

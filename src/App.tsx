@@ -1,16 +1,17 @@
 // Purpose: Compose launcher navigation and route install actions into the instance workflow.
 import { useEffect, useMemo, useState } from "react";
 import AuthPanel from "./components/AuthPanel";
-import DeploymentPanel from "./components/DeploymentPanel";
 import HomeView from "./components/HomeView";
-import InstanceManager from "./components/InstanceManager";
+import InstanceWizardModal from "./components/InstanceWizardModal";
 import RepositoryList from "./components/RepositoryList";
 import SearchPanel from "./components/SearchPanel";
 import Sidebar from "./components/Sidebar";
 import { useLauncherData } from "./hooks/useLauncherData";
+import { useInstanceDeploymentStatus } from "./hooks/useInstanceDeploymentStatus";
+import { apiClient } from "./services/apiClient";
 import { ownerFromGithubUrl } from "./utils/github";
 
-type ViewMode = "home" | "repositories" | "search" | "instances";
+type ViewMode = "home" | "repositories" | "search";
 type ExtendedViewMode = ViewMode | "account";
 
 export default function App() {
@@ -37,6 +38,7 @@ export default function App() {
     saveInstance,
     loadInstanceInput,
     updateInstance,
+    deleteInstance,
     refreshInstances,
     refreshGithubAuthStatus,
     refreshRepositories
@@ -44,7 +46,19 @@ export default function App() {
 
   const [view, setView] = useState<ExtendedViewMode>("home");
   const [installDraft, setInstallDraft] = useState<{ owner: string; repo: string } | null>(null);
-  const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardMode, setWizardMode] = useState<"create" | "edit">("create");
+  const [editingInstanceID, setEditingInstanceID] = useState<string | null>(null);
+  const [deployProgressByInstance, setDeployProgressByInstance] = useState<
+    Record<string, { running: boolean; value: number; task: string }>
+  >({});
+
+  const {
+    statuses,
+    loading: deploymentStatusLoading,
+    refreshInstanceStatus,
+    refreshAllStatuses
+  } = useInstanceDeploymentStatus(instances);
   const folders = useMemo(() => profiles.folders || [], [profiles.folders]);
   const existingSidebarOwners = useMemo(
     () =>
@@ -85,12 +99,126 @@ export default function App() {
 
   function startInstall(owner: string, repo: string): void {
     setInstallDraft({ owner, repo });
-    setView("instances");
+    setWizardMode("create");
+    setEditingInstanceID(null);
+    setView("home");
+    setWizardOpen(true);
   }
 
-  function startEditInstance(instanceID: string): void {
-    setView("instances");
-    setEditRequest({ id: instanceID, nonce: Date.now() });
+  function startCreateFromHome(): void {
+    setInstallDraft(null);
+    setWizardMode("create");
+    setEditingInstanceID(null);
+    setView("home");
+    setWizardOpen(true);
+  }
+
+  function openInstanceWizard(instanceID: string): void {
+    setWizardMode("edit");
+    setEditingInstanceID(instanceID);
+    setView("home");
+    setWizardOpen(true);
+  }
+
+  async function openSite(url: string): Promise<void> {
+    const normalized = url.trim();
+    if (!normalized) {
+      return;
+    }
+
+    try {
+      if (window.__TAURI_IPC__) {
+        const shell = await import("@tauri-apps/api/shell");
+        await shell.open(normalized);
+        return;
+      }
+    } catch {
+      // Fallback to browser open below.
+    }
+
+    window.open(normalized, "_blank", "noopener,noreferrer");
+  }
+
+  async function deployOrUpdate(instanceID: string): Promise<void> {
+    const status = statuses[instanceID];
+    if (!status) {
+      return;
+    }
+
+    const updateProgress = (value: number, task: string, running: boolean): void => {
+      setDeployProgressByInstance((current) => ({
+        ...current,
+        [instanceID]: {
+          running,
+          value,
+          task
+        }
+      }));
+    };
+
+    updateProgress(5, "Preparing deployment...", true);
+
+    const progressTimer = window.setInterval(() => {
+      setDeployProgressByInstance((current) => {
+        const previous = current[instanceID] || { running: true, value: 5, task: "Preparing deployment..." };
+        if (previous.value >= 84) {
+          return current;
+        }
+
+        const nextValue = previous.value + 2;
+        let nextTask = "Preparing deployment...";
+        if (nextValue >= 20 && nextValue < 45) {
+          nextTask = "Downloading Git source...";
+        } else if (nextValue >= 45 && nextValue < 75) {
+          nextTask = "Uploading files...";
+        } else if (nextValue >= 75) {
+          nextTask = "Finalizing remote sync...";
+        }
+
+        return {
+          ...current,
+          [instanceID]: {
+            running: true,
+            value: nextValue,
+            task: nextTask
+          }
+        };
+      });
+    }, 1300);
+
+    try {
+      const response = await apiClient.deployFtpByInstance({
+        instance_id: instanceID,
+        git_ref: status.latest_git_tag || "",
+        rollback_on_fail: true
+      });
+
+      const uploadedCount = response.logs.filter((line) => line.toLowerCase().startsWith("uploaded ")).length;
+      const lastFileLog = [...response.logs].reverse().find((line) => line.toLowerCase().startsWith("uploaded "));
+      const completionTask = uploadedCount > 0 ? `Uploaded ${uploadedCount} files` : lastFileLog || "Deployment completed";
+      updateProgress(100, completionTask, false);
+
+      await refreshInstances();
+      await refreshInstanceStatus(instanceID);
+    } catch (error) {
+      updateProgress(100, error instanceof Error ? error.message : "Deployment failed", false);
+    } finally {
+      window.clearInterval(progressTimer);
+    }
+  }
+
+  async function deleteInstanceFromHome(instanceID: string): Promise<void> {
+    if (!window.confirm("Delete this instance permanently?")) {
+      return;
+    }
+
+    await deleteInstance(instanceID);
+    setDeployProgressByInstance((current) => {
+      const next = { ...current };
+      delete next[instanceID];
+      return next;
+    });
+    await refreshAllStatuses();
   }
 
   if (loading) {
@@ -134,7 +262,6 @@ export default function App() {
         }}
         onShowSearch={() => setView("search")}
         onShowHome={() => setView("home")}
-        onShowInstances={() => setView("instances")}
         onShowAccount={() => setView("account")}
         githubConnected={githubConnected}
         currentView={view}
@@ -143,7 +270,21 @@ export default function App() {
       <section className="content-shell">
         {githubWarning && <div className="warning-banner">{githubWarning}</div>}
 
-        {view === "home" && <HomeView instances={instances} onEditInstance={startEditInstance} />}
+        {view === "home" && (
+          <HomeView
+            instances={instances}
+            statuses={statuses}
+            loadingByInstance={deploymentStatusLoading}
+            deployProgressByInstance={deployProgressByInstance}
+            onOpenInstanceWizard={openInstanceWizard}
+            onCreateInstance={startCreateFromHome}
+            onDeleteInstance={deleteInstanceFromHome}
+            onDeployOrUpdate={deployOrUpdate}
+            onOpenSite={(url) => {
+              void openSite(url);
+            }}
+          />
+        )}
         {view === "search" && (
           <SearchPanel
             onSearch={searchGithub}
@@ -161,28 +302,35 @@ export default function App() {
           />
         )}
 
-        {view === "instances" && (
-          <InstanceManager
-            instances={instances}
-            onSaveInstance={saveInstance}
-            onUpdateInstance={updateInstance}
-            onLoadInstance={loadInstanceInput}
-            installDraft={installDraft}
-            editRequest={editRequest}
-          />
-        )}
-
         {view === "account" && (
           <AuthPanel
             onConnected={async () => {
               await refreshGithubAuthStatus();
               await refreshInstances();
               await refreshRepositories(selectedOwner);
+              await refreshAllStatuses();
             }}
           />
         )}
 
-        {(view === "home" || view === "instances") && <DeploymentPanel instances={instances} />}
+        <InstanceWizardModal
+          open={wizardOpen}
+          mode={wizardMode}
+          instanceID={editingInstanceID}
+          installDraft={installDraft}
+          onClose={() => {
+            setWizardOpen(false);
+            setInstallDraft(null);
+            setEditingInstanceID(null);
+          }}
+          onSaved={async () => {
+            await refreshInstances();
+            await refreshAllStatuses();
+          }}
+          onSaveInstance={saveInstance}
+          onUpdateInstance={updateInstance}
+          onLoadInstance={loadInstanceInput}
+        />
       </section>
     </main>
   );

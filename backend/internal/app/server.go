@@ -33,6 +33,7 @@ type ServerDependencies struct {
 	GitHub         *githubservice.Client
 	DeviceFlow     *auth.DeviceFlowService
 	FTPEngine      *deploy.FTPEngine
+	SQLExecutor    *sqlservice.Executor
 	SQLPlanner     *sqlservice.MigrationPlanner
 }
 
@@ -71,6 +72,7 @@ func NewServer(logger *log.Logger) (*http.Server, error) {
 		GitHub:         githubservice.NewClient(),
 		DeviceFlow:     auth.NewDeviceFlowService(),
 		FTPEngine:      deploy.NewFTPEngine(paths.DeployLogDir),
+		SQLExecutor:    sqlservice.NewExecutor(),
 		SQLPlanner:     sqlservice.NewMigrationPlanner(),
 	}
 
@@ -97,6 +99,7 @@ func (api *APIServer) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/profiles", api.handleProfiles)
 	mux.HandleFunc("/api/instances", api.handleInstances)
 	mux.HandleFunc("/api/instances/ftp-version", api.handleInstanceFTPVersion)
+	mux.HandleFunc("/api/instances/deploy-status", api.handleInstanceDeployStatus)
 	mux.HandleFunc("/api/github/search", api.handleGitHubSearch)
 	mux.HandleFunc("/api/github/repos", api.handleGitHubRepos)
 	mux.HandleFunc("/api/github/manifest", api.handleGitHubManifest)
@@ -243,6 +246,18 @@ func (api *APIServer) handleInstances(writer http.ResponseWriter, request *http.
 			return
 		}
 		writeJSON(writer, http.StatusOK, map[string]string{"status": "updated"})
+	case http.MethodDelete:
+		instanceID := strings.TrimSpace(request.URL.Query().Get("id"))
+		if instanceID == "" {
+			writeError(writer, http.StatusBadRequest, "id is required")
+			return
+		}
+
+		if err := api.deps.InstancesStore.DeleteInstance(instanceID); err != nil {
+			writeError(writer, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(writer, http.StatusOK, map[string]string{"status": "deleted"})
 	default:
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 	}
@@ -557,6 +572,27 @@ func (api *APIServer) handleDeployFTPByInstance(writer http.ResponseWriter, requ
 		result.Logs = append(result.Logs, fmt.Sprintf("ignore patterns applied: %d", len(ignorePatterns)))
 	}
 
+	if manifest != nil && manifest.Launcher.RequiresSQL {
+		schemaPath := resolveManifestSQLScriptPath(manifest)
+		if schemaPath == "" {
+			writeError(writer, http.StatusBadRequest, "manifest requires_sql=true but no SQL file path is defined (manifest.database, launcher.sql_schema_path, launcher.database_file_path)")
+			return
+		}
+
+		scriptPayload, scriptErr := api.deps.GitHub.FetchTextFileAtRef(instance.Owner, instance.Repo, schemaPath, payload.GitRef, token)
+		if scriptErr != nil {
+			writeError(writer, http.StatusBadGateway, "load SQL script from GitHub: "+scriptErr.Error())
+			return
+		}
+
+		if execErr := api.deps.SQLExecutor.ExecuteDirect(instance.SQLDSN, instance.SQLUsername, instance.SQLPassword, instance.SQLDatabase, string(scriptPayload)); execErr != nil {
+			writeError(writer, http.StatusBadRequest, "execute SQL import: "+execErr.Error())
+			return
+		}
+
+		result.Logs = append(result.Logs, "sql import applied from "+schemaPath)
+	}
+
 	writeJSON(writer, http.StatusOK, result)
 }
 
@@ -597,12 +633,12 @@ func (api *APIServer) handleSQLMigrationPlan(writer http.ResponseWriter, request
 			return
 		}
 
-		if manifest == nil || strings.TrimSpace(manifest.Launcher.SQLSchemaPath) == "" {
-			writeError(writer, http.StatusBadRequest, "schema_path is required when manifest.launcher.sql_schema_path is not set")
+		schemaPath = resolveManifestSQLScriptPath(manifest)
+
+		if schemaPath == "" {
+			writeError(writer, http.StatusBadRequest, "schema_path is required when manifest.database, manifest.launcher.sql_schema_path and manifest.launcher.database_file_path are not set")
 			return
 		}
-
-		schemaPath = strings.TrimSpace(manifest.Launcher.SQLSchemaPath)
 	}
 
 	fromSchema, err := api.deps.GitHub.FetchTextFileAtRef(instance.Owner, instance.Repo, schemaPath, payload.FromRef, token)
@@ -629,7 +665,7 @@ func (api *APIServer) handleSQLMigrationPlan(writer http.ResponseWriter, request
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Access-Control-Allow-Origin", "*")
-		writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if request.Method == http.MethodOptions {
@@ -673,6 +709,26 @@ func missingSQLConfigFields(input models.InstanceInput) []string {
 		missing = append(missing, "sqlPassword")
 	}
 	return missing
+}
+
+func resolveManifestSQLScriptPath(manifest *models.LauncherManifest) string {
+	if manifest == nil {
+		return ""
+	}
+
+	if path := strings.TrimSpace(manifest.Database); path != "" {
+		return path
+	}
+
+	if path := strings.TrimSpace(manifest.Launcher.SQLSchemaPath); path != "" {
+		return path
+	}
+
+	if path := strings.TrimSpace(manifest.Launcher.DatabaseFilePath); path != "" {
+		return path
+	}
+
+	return ""
 }
 
 func generateOAuthState() (string, error) {
@@ -911,4 +967,151 @@ func (api *APIServer) handleInstanceFTPVersion(writer http.ResponseWriter, reque
 
 	response.Version = version
 	writeJSON(writer, http.StatusOK, response)
+}
+
+func (api *APIServer) handleInstanceDeployStatus(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	instanceID := strings.TrimSpace(request.URL.Query().Get("id"))
+	if instanceID == "" {
+		writeError(writer, http.StatusBadRequest, "id is required")
+		return
+	}
+
+	input, err := api.deps.InstancesStore.GetInstanceInput(instanceID)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, err.Error())
+		return
+	}
+
+	response := models.InstanceDeploymentStatusResponse{
+		InstanceID: instanceID,
+		SiteURL:    strings.TrimSpace(input.SiteURL),
+	}
+
+	token, _ := api.deps.TokenStore.Read()
+	latestTag, tagErr := api.deps.GitHub.FetchLatestTag(input.Owner, input.Repo, token)
+	if tagErr != nil {
+		response.Error = tagErr.Error()
+		writeJSON(writer, http.StatusOK, response)
+		return
+	}
+	response.LatestGitTag = latestTag
+
+	isEmpty, emptyErr := api.deps.FTPEngine.IsRemotePathEmpty(request.Context(), input)
+	if emptyErr != nil {
+		response.Error = emptyErr.Error()
+		writeJSON(writer, http.StatusOK, response)
+		return
+	}
+
+	response.Deployed = !isEmpty
+	if isEmpty {
+		response.UpdateAvailable = false
+		writeJSON(writer, http.StatusOK, response)
+		return
+	}
+
+	remoteVersion, versionErr := api.deps.FTPEngine.ReadRemoteManifestVersion(request.Context(), input)
+	if versionErr == nil {
+		response.RemoteManifestVersion = strings.TrimSpace(remoteVersion)
+	} else {
+		response.Error = versionErr.Error()
+	}
+
+	if strings.TrimSpace(response.LatestGitTag) == "" {
+		response.UpdateAvailable = false
+		writeJSON(writer, http.StatusOK, response)
+		return
+	}
+
+	if strings.TrimSpace(response.RemoteManifestVersion) == "" {
+		response.UpdateAvailable = true
+		writeJSON(writer, http.StatusOK, response)
+		return
+	}
+
+	response.UpdateAvailable = compareVersionLabels(response.LatestGitTag, response.RemoteManifestVersion) != 0
+	writeJSON(writer, http.StatusOK, response)
+}
+
+func compareVersionLabels(left, right string) int {
+	normalize := func(value string) []string {
+		value = strings.ToLower(strings.TrimSpace(value))
+		value = strings.TrimPrefix(value, "v")
+		value = strings.TrimPrefix(value, "release-")
+		value = strings.TrimPrefix(value, "version-")
+		value = strings.ReplaceAll(value, "_", ".")
+		value = strings.ReplaceAll(value, "-", ".")
+		parts := strings.Split(value, ".")
+		clean := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if strings.TrimSpace(part) == "" {
+				continue
+			}
+			clean = append(clean, part)
+		}
+		return clean
+	}
+
+	leftParts := normalize(left)
+	rightParts := normalize(right)
+
+	maxLen := len(leftParts)
+	if len(rightParts) > maxLen {
+		maxLen = len(rightParts)
+	}
+
+	for index := 0; index < maxLen; index++ {
+		leftPart := "0"
+		if index < len(leftParts) {
+			leftPart = leftParts[index]
+		}
+
+		rightPart := "0"
+		if index < len(rightParts) {
+			rightPart = rightParts[index]
+		}
+
+		leftNumber, leftNumberErr := parseVersionNumber(leftPart)
+		rightNumber, rightNumberErr := parseVersionNumber(rightPart)
+
+		if leftNumberErr == nil && rightNumberErr == nil {
+			if leftNumber > rightNumber {
+				return 1
+			}
+			if leftNumber < rightNumber {
+				return -1
+			}
+			continue
+		}
+
+		if leftPart > rightPart {
+			return 1
+		}
+		if leftPart < rightPart {
+			return -1
+		}
+	}
+
+	return 0
+}
+
+func parseVersionNumber(value string) (int, error) {
+	if value == "" {
+		return 0, fmt.Errorf("empty version part")
+	}
+
+	number := 0
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return 0, fmt.Errorf("not numeric")
+		}
+		number = number*10 + int(character-'0')
+	}
+
+	return number, nil
 }
