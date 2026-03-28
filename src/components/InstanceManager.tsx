@@ -9,6 +9,7 @@ interface InstanceManagerProps {
   onUpdateInstance: (id: string, input: InstanceInput) => Promise<void>;
   onLoadInstance: (id: string) => Promise<InstanceInput>;
   installDraft: { owner: string; repo: string } | null;
+  editRequest?: { id: string; nonce: number } | null;
 }
 
 const EMPTY_FORM: InstanceInput = {
@@ -27,7 +28,8 @@ export default function InstanceManager({
   onSaveInstance,
   onUpdateInstance,
   onLoadInstance,
-  installDraft
+  installDraft,
+  editRequest
 }: InstanceManagerProps) {
   const ftpVersions = useInstanceFtpVersions(instances);
   const [form, setForm] = useState<InstanceInput>(EMPTY_FORM);
@@ -48,6 +50,14 @@ export default function InstanceManager({
       name: current.name || `${installDraft.repo}-instance`
     }));
   }, [installDraft, editingId]);
+
+  useEffect(() => {
+    if (!editRequest?.id) {
+      return;
+    }
+
+    void startEdit(editRequest.id);
+  }, [editRequest?.id, editRequest?.nonce]);
 
   async function startEdit(id: string): Promise<void> {
     setLoadingDetails(true);

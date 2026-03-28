@@ -6,9 +6,9 @@ import "fmt"
 type SFTPEngine struct{}
 
 func NewSFTPEngine() *SFTPEngine {
-  return &SFTPEngine{}
+	return &SFTPEngine{}
 }
 
 func (engine *SFTPEngine) Deploy() error {
-  return fmt.Errorf("sftp deployment implementation is pending")
+	return fmt.Errorf("sftp deployment implementation is pending")
 }

@@ -78,10 +78,13 @@ Launcher/
 - GitHub OAuth Device Flow (without client secret).
 - FTP deployment engine baseline with:
   - upload and replace behavior
+  - source from GitHub repository archive (branch/tag/commit)
+  - manifest-driven ignore patterns (`launcher.ignore`)
   - deployment logs
   - rollback of replaced files (backup restore)
 - SSH engine baseline (command execution).
-- SQL executor module stub for direct mode and script mode extension.
+- SQL migration planner endpoint to compare two refs and generate safe ALTER ADD statements + warnings.
+- SQL executor module remains a controlled stub for direct execution extension.
 - SFTP module placeholder separated for incremental implementation.
 
 ### Tauri bridge
@@ -145,6 +148,45 @@ npm run web:build
 - `POST /api/auth/github/device/poll`
 - `POST /api/auth/github/token`
 - `POST /api/deploy/ftp`
+- `POST /api/deploy/ftp/instance`
+- `POST /api/sql/migration-plan`
+
+## Manifest behavior
+
+`manifest.json` supports deployment filtering and SQL schema planning fields:
+
+```json
+{
+  "project_name": "MyProject",
+  "version": "1.2.0",
+  "type": "php",
+  "launcher": {
+    "compatible": true,
+    "connection_types": ["ftp"],
+    "requires_sql": true,
+    "sql_schema_path": "database/schema.json",
+    "ignore": [
+      "actions/database.php",
+      "storage/",
+      "*.log"
+    ],
+    "notes": "Optional deployment notes"
+  }
+}
+```
+
+Rules for `launcher.ignore`:
+
+- `actions/database.php` ignores exactly this file.
+- `storage/` ignores the full directory recursively.
+- `*.log` ignores matching filenames.
+- `assets/**` ignores a tree prefix.
+
+Why ignore files and folders:
+
+- Keep server-only runtime files untouched (uploads, caches, session files).
+- Avoid overwriting environment-specific files.
+- Reduce transfer size and accidental destructive updates.
 
 ## Progressive next steps
 

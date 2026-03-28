@@ -22,6 +22,7 @@ import (
 	"launcher/backend/internal/services/auth"
 	"launcher/backend/internal/services/deploy"
 	githubservice "launcher/backend/internal/services/github"
+	sqlservice "launcher/backend/internal/services/sql"
 	"launcher/backend/internal/storage"
 )
 
@@ -32,6 +33,7 @@ type ServerDependencies struct {
 	GitHub         *githubservice.Client
 	DeviceFlow     *auth.DeviceFlowService
 	FTPEngine      *deploy.FTPEngine
+	SQLPlanner     *sqlservice.MigrationPlanner
 }
 
 type APIServer struct {
@@ -69,6 +71,7 @@ func NewServer(logger *log.Logger) (*http.Server, error) {
 		GitHub:         githubservice.NewClient(),
 		DeviceFlow:     auth.NewDeviceFlowService(),
 		FTPEngine:      deploy.NewFTPEngine(paths.DeployLogDir),
+		SQLPlanner:     sqlservice.NewMigrationPlanner(),
 	}
 
 	api := &APIServer{
@@ -104,6 +107,7 @@ func (api *APIServer) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/auth/github/status", api.handleGitHubAuthStatus)
 	mux.HandleFunc("/api/deploy/ftp", api.handleDeployFTP)
 	mux.HandleFunc("/api/deploy/ftp/instance", api.handleDeployFTPByInstance)
+	mux.HandleFunc("/api/sql/migration-plan", api.handleSQLMigrationPlan)
 }
 
 func (api *APIServer) handleHealth(writer http.ResponseWriter, request *http.Request) {
@@ -469,13 +473,38 @@ func (api *APIServer) handleDeployFTPByInstance(writer http.ResponseWriter, requ
 		return
 	}
 
+	token, _ := api.deps.TokenStore.Read()
+	manifest, manifestErr := api.deps.GitHub.FetchManifestAtRef(instance.Owner, instance.Repo, payload.GitRef, token)
+	if manifestErr != nil {
+		writeError(writer, http.StatusBadGateway, manifestErr.Error())
+		return
+	}
+
+	if manifest != nil && manifest.Launcher.RequiresSQL && strings.TrimSpace(instance.SQLDSN) == "" {
+		writeError(writer, http.StatusBadRequest, "this project requires SQL but this instance has no SQL DSN configured")
+		return
+	}
+
+	sourcePath, cleanup, err := api.deps.GitHub.DownloadRepositorySource(instance.Owner, instance.Repo, payload.GitRef, token)
+	if err != nil {
+		writeError(writer, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer cleanup()
+
+	ignorePatterns := []string{}
+	if manifest != nil {
+		ignorePatterns = append(ignorePatterns, manifest.Launcher.Ignore...)
+	}
+
 	deployRequest := models.FTPDeployRequest{
-		LocalPath:      payload.LocalPath,
+		LocalPath:      sourcePath,
 		RemotePath:     instance.FTPRemotePath,
 		Host:           instance.FTPHost,
 		Port:           instance.FTPPort,
 		Username:       instance.FTPUsername,
 		Password:       instance.FTPPassword,
+		Ignore:         ignorePatterns,
 		RollbackOnFail: payload.RollbackOnFail,
 	}
 
@@ -485,7 +514,87 @@ func (api *APIServer) handleDeployFTPByInstance(writer http.ResponseWriter, requ
 		return
 	}
 
+	refLabel := strings.TrimSpace(payload.GitRef)
+	if refLabel == "" {
+		refLabel = "default-branch"
+	}
+
+	result.Logs = append(
+		[]string{fmt.Sprintf("source: github %s/%s (ref=%s)", instance.Owner, instance.Repo, refLabel)},
+		result.Logs...,
+	)
+
+	if manifest != nil && len(ignorePatterns) > 0 {
+		result.Logs = append(result.Logs, fmt.Sprintf("ignore patterns applied: %d", len(ignorePatterns)))
+	}
+
 	writeJSON(writer, http.StatusOK, result)
+}
+
+func (api *APIServer) handleSQLMigrationPlan(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var payload models.SQLMigrationPlanRequest
+	if err := decodeJSON(request.Body, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if strings.TrimSpace(payload.InstanceID) == "" || strings.TrimSpace(payload.FromRef) == "" || strings.TrimSpace(payload.ToRef) == "" {
+		writeError(writer, http.StatusBadRequest, "instance_id, from_ref and to_ref are required")
+		return
+	}
+
+	instance, err := api.deps.InstancesStore.GetInstanceInput(payload.InstanceID)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, err.Error())
+		return
+	}
+
+	if strings.TrimSpace(instance.SQLDSN) == "" {
+		writeError(writer, http.StatusBadRequest, "selected instance has no SQL DSN configured")
+		return
+	}
+
+	token, _ := api.deps.TokenStore.Read()
+	schemaPath := strings.TrimSpace(payload.SchemaPath)
+	if schemaPath == "" {
+		manifest, manifestErr := api.deps.GitHub.FetchManifestAtRef(instance.Owner, instance.Repo, payload.ToRef, token)
+		if manifestErr != nil {
+			writeError(writer, http.StatusBadGateway, manifestErr.Error())
+			return
+		}
+
+		if manifest == nil || strings.TrimSpace(manifest.Launcher.SQLSchemaPath) == "" {
+			writeError(writer, http.StatusBadRequest, "schema_path is required when manifest.launcher.sql_schema_path is not set")
+			return
+		}
+
+		schemaPath = strings.TrimSpace(manifest.Launcher.SQLSchemaPath)
+	}
+
+	fromSchema, err := api.deps.GitHub.FetchTextFileAtRef(instance.Owner, instance.Repo, schemaPath, payload.FromRef, token)
+	if err != nil {
+		writeError(writer, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	toSchema, err := api.deps.GitHub.FetchTextFileAtRef(instance.Owner, instance.Repo, schemaPath, payload.ToRef, token)
+	if err != nil {
+		writeError(writer, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	plan, err := api.deps.SQLPlanner.BuildPlan(payload.FromRef, payload.ToRef, schemaPath, fromSchema, toSchema)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, plan)
 }
 
 func withCORS(next http.Handler) http.Handler {

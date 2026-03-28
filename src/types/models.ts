@@ -25,6 +25,7 @@ export interface LauncherCompatibility {
   compatible: boolean;
   connection_types: string[];
   requires_sql: boolean;
+  sql_schema_path?: string;
   notes: string;
   ignore: string[];
 }
@@ -124,13 +125,40 @@ export interface FTPDeployRequest {
   port: number;
   username: string;
   password: string;
+  ignore?: string[];
   rollback_on_fail: boolean;
 }
 
 export interface FTPDeployByInstanceRequest {
   instance_id: string;
-  local_path: string;
+  git_ref?: string;
   rollback_on_fail: boolean;
+}
+
+export interface SQLMigrationPlanRequest {
+  instance_id: string;
+  from_ref: string;
+  to_ref: string;
+  schema_path?: string;
+}
+
+export interface SQLColumnRename {
+  table: string;
+  from_column: string;
+  to_column: string;
+}
+
+export interface SQLMigrationPlanResponse {
+  from_ref: string;
+  to_ref: string;
+  schema_path: string;
+  added_tables: string[];
+  removed_tables: string[];
+  added_columns: string[];
+  removed_columns: string[];
+  renamed_columns: SQLColumnRename[];
+  alter_statements: string[];
+  warnings: string[];
 }
 
 export interface DeployResult {

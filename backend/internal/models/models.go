@@ -27,6 +27,7 @@ type LauncherCompatibility struct {
 	Compatible      bool     `json:"compatible"`
 	ConnectionTypes []string `json:"connection_types"`
 	RequiresSQL     bool     `json:"requires_sql"`
+	SQLSchemaPath   string   `json:"sql_schema_path,omitempty"`
 	Notes           string   `json:"notes"`
 	Ignore          []string `json:"ignore"`
 }
@@ -141,19 +142,46 @@ type SetTokenRequest struct {
 }
 
 type FTPDeployRequest struct {
-	LocalPath      string `json:"local_path"`
-	RemotePath     string `json:"remote_path"`
-	Host           string `json:"host"`
-	Port           int    `json:"port"`
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	RollbackOnFail bool   `json:"rollback_on_fail"`
+	LocalPath      string   `json:"local_path"`
+	RemotePath     string   `json:"remote_path"`
+	Host           string   `json:"host"`
+	Port           int      `json:"port"`
+	Username       string   `json:"username"`
+	Password       string   `json:"password"`
+	Ignore         []string `json:"ignore,omitempty"`
+	RollbackOnFail bool     `json:"rollback_on_fail"`
 }
 
 type FTPDeployByInstanceRequest struct {
 	InstanceID     string `json:"instance_id"`
-	LocalPath      string `json:"local_path"`
+	GitRef         string `json:"git_ref,omitempty"`
 	RollbackOnFail bool   `json:"rollback_on_fail"`
+}
+
+type SQLMigrationPlanRequest struct {
+	InstanceID string `json:"instance_id"`
+	FromRef    string `json:"from_ref"`
+	ToRef      string `json:"to_ref"`
+	SchemaPath string `json:"schema_path,omitempty"`
+}
+
+type SQLColumnRename struct {
+	Table      string `json:"table"`
+	FromColumn string `json:"from_column"`
+	ToColumn   string `json:"to_column"`
+}
+
+type SQLMigrationPlanResponse struct {
+	FromRef         string            `json:"from_ref"`
+	ToRef           string            `json:"to_ref"`
+	SchemaPath      string            `json:"schema_path"`
+	AddedTables     []string          `json:"added_tables"`
+	RemovedTables   []string          `json:"removed_tables"`
+	AddedColumns    []string          `json:"added_columns"`
+	RemovedColumns  []string          `json:"removed_columns"`
+	RenamedColumns  []SQLColumnRename `json:"renamed_columns"`
+	AlterStatements []string          `json:"alter_statements"`
+	Warnings        []string          `json:"warnings"`
 }
 
 type DeployResult struct {

@@ -2,34 +2,34 @@
 package main
 
 import (
-  "context"
-  "log"
-  "os"
-  "os/signal"
-  "syscall"
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
-  "launcher/backend/internal/app"
+	"launcher/backend/internal/app"
 )
 
 func main() {
-  logger := log.New(os.Stdout, "[launcher-backend] ", log.LstdFlags|log.Lshortfile)
+	logger := log.New(os.Stdout, "[launcher-backend] ", log.LstdFlags|log.Lshortfile)
 
-  server, err := app.NewServer(logger)
-  if err != nil {
-    logger.Fatalf("failed to initialize server: %v", err)
-  }
+	server, err := app.NewServer(logger)
+	if err != nil {
+		logger.Fatalf("failed to initialize server: %v", err)
+	}
 
-  ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-  defer stop()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-  go func() {
-    <-ctx.Done()
-    logger.Printf("shutdown signal received")
-    _ = server.Shutdown(context.Background())
-  }()
+	go func() {
+		<-ctx.Done()
+		logger.Printf("shutdown signal received")
+		_ = server.Shutdown(context.Background())
+	}()
 
-  logger.Printf("backend server listening on %s", server.Addr)
-  if err := server.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
-    logger.Fatalf("server error: %v", err)
-  }
+	logger.Printf("backend server listening on %s", server.Addr)
+	if err := server.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
+		logger.Fatalf("server error: %v", err)
+	}
 }

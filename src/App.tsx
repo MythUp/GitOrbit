@@ -44,6 +44,7 @@ export default function App() {
 
   const [view, setView] = useState<ExtendedViewMode>("home");
   const [installDraft, setInstallDraft] = useState<{ owner: string; repo: string } | null>(null);
+  const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
   const folders = useMemo(() => profiles.folders || [], [profiles.folders]);
   const existingSidebarOwners = useMemo(
     () =>
@@ -85,6 +86,11 @@ export default function App() {
   function startInstall(owner: string, repo: string): void {
     setInstallDraft({ owner, repo });
     setView("instances");
+  }
+
+  function startEditInstance(instanceID: string): void {
+    setView("instances");
+    setEditRequest({ id: instanceID, nonce: Date.now() });
   }
 
   if (loading) {
@@ -137,7 +143,7 @@ export default function App() {
       <section className="content-shell">
         {githubWarning && <div className="warning-banner">{githubWarning}</div>}
 
-        {view === "home" && <HomeView instances={instances} />}
+        {view === "home" && <HomeView instances={instances} onEditInstance={startEditInstance} />}
         {view === "search" && (
           <SearchPanel
             onSearch={searchGithub}
@@ -162,6 +168,7 @@ export default function App() {
             onUpdateInstance={updateInstance}
             onLoadInstance={loadInstanceInput}
             installDraft={installDraft}
+            editRequest={editRequest}
           />
         )}
 

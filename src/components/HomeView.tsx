@@ -4,9 +4,10 @@ import { useInstanceFtpVersions } from "../hooks/useInstanceFtpVersions";
 
 interface HomeViewProps {
   instances: InstanceRecord[];
+  onEditInstance: (instanceID: string) => void;
 }
 
-export default function HomeView({ instances }: HomeViewProps) {
+export default function HomeView({ instances, onEditInstance }: HomeViewProps) {
   const ftpVersions = useInstanceFtpVersions(instances);
 
   return (
@@ -24,6 +25,9 @@ export default function HomeView({ instances }: HomeViewProps) {
             </p>
             <small>Installed FTP version: {ftpVersions[instance.id] || "checking..."}</small>
             <small>Updated: {new Date(instance.updated_at).toLocaleString()}</small>
+            <button type="button" className="btn-secondary" onClick={() => onEditInstance(instance.id)}>
+              Edit instance
+            </button>
           </article>
         ))}
       </div>

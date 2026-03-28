@@ -124,6 +124,12 @@ func (engine *FTPEngine) Deploy(ctx context.Context, request models.FTPDeployReq
 			return err
 		}
 
+		relativeForMatch := filepath.ToSlash(relative)
+		if shouldIgnorePath(relativeForMatch, request.Ignore) {
+			result.Logs = append(result.Logs, "ignored "+relativeForMatch)
+			return nil
+		}
+
 		remotePath := filepath.ToSlash(filepath.Join(request.RemotePath, relative))
 
 		if existing, err := connection.Retr(remotePath); err == nil {
@@ -206,4 +212,64 @@ func ensureFTPDirectories(connection *ftp.ServerConn, dir string) error {
 	}
 
 	return nil
+}
+
+func shouldIgnorePath(relative string, patterns []string) bool {
+	relative = normalizePath(relative)
+	if relative == "" {
+		return false
+	}
+
+	for _, pattern := range patterns {
+		if matchesIgnorePattern(relative, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func matchesIgnorePattern(relative, pattern string) bool {
+	pattern = normalizePath(pattern)
+	if pattern == "" {
+		return false
+	}
+
+	if strings.HasSuffix(pattern, "/**") {
+		prefix := strings.TrimSuffix(pattern, "/**")
+		return relative == prefix || strings.HasPrefix(relative, prefix+"/")
+	}
+
+	if strings.HasSuffix(pattern, "/") {
+		prefix := strings.TrimSuffix(pattern, "/")
+		return relative == prefix || strings.HasPrefix(relative, prefix+"/")
+	}
+
+	if strings.ContainsAny(pattern, "*?[") {
+		if ok, err := path.Match(pattern, relative); err == nil && ok {
+			return true
+		}
+
+		if !strings.Contains(pattern, "/") {
+			if ok, err := path.Match(pattern, path.Base(relative)); err == nil && ok {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	if relative == pattern {
+		return true
+	}
+
+	return strings.HasPrefix(relative, pattern+"/")
+}
+
+func normalizePath(value string) string {
+	value = strings.TrimSpace(filepath.ToSlash(value))
+	value = strings.TrimPrefix(value, "./")
+	value = strings.TrimPrefix(value, "/")
+	value = strings.TrimSuffix(value, "/")
+	return value
 }

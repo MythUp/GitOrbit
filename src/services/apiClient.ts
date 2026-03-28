@@ -12,6 +12,8 @@ import {
   InstanceRecord,
   ProfilesConfig,
   RepositoryItem,
+  SQLMigrationPlanRequest,
+  SQLMigrationPlanResponse,
   SearchResultItem,
   WebAuthStartResponse
 } from "../types/models";
@@ -527,6 +529,13 @@ export const apiClient = {
 
   deployFtpByInstance(payload: FTPDeployByInstanceRequest): Promise<DeployResult> {
     return request<DeployResult>("/api/deploy/ftp/instance", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+
+  planSQLMigration(payload: SQLMigrationPlanRequest): Promise<SQLMigrationPlanResponse> {
+    return request<SQLMigrationPlanResponse>("/api/sql/migration-plan", {
       method: "POST",
       body: JSON.stringify(payload)
     });
