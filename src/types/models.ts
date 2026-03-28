@@ -74,6 +74,9 @@ export interface InstanceInput {
   sshUsername?: string;
   sshPassword?: string;
   sqlDsn?: string;
+  sqlUsername?: string;
+  sqlPassword?: string;
+  sqlDatabase?: string;
 }
 
 export interface InstanceRecord {
@@ -133,6 +136,19 @@ export interface FTPDeployByInstanceRequest {
   instance_id: string;
   git_ref?: string;
   rollback_on_fail: boolean;
+}
+
+export interface FTPDirectoriesRequest {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  start_path?: string;
+}
+
+export interface FTPDirectoriesResponse {
+  current_path: string;
+  directories: string[];
 }
 
 export interface SQLMigrationPlanRequest {

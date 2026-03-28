@@ -76,6 +76,9 @@ type InstanceInput struct {
 	SSHUsername   string `json:"sshUsername,omitempty"`
 	SSHPassword   string `json:"sshPassword,omitempty"`
 	SQLDSN        string `json:"sqlDsn,omitempty"`
+	SQLUsername   string `json:"sqlUsername,omitempty"`
+	SQLPassword   string `json:"sqlPassword,omitempty"`
+	SQLDatabase   string `json:"sqlDatabase,omitempty"`
 }
 
 type InstanceRecord struct {
@@ -156,6 +159,19 @@ type FTPDeployByInstanceRequest struct {
 	InstanceID     string `json:"instance_id"`
 	GitRef         string `json:"git_ref,omitempty"`
 	RollbackOnFail bool   `json:"rollback_on_fail"`
+}
+
+type FTPDirectoriesRequest struct {
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	StartPath string `json:"start_path,omitempty"`
+}
+
+type FTPDirectoriesResponse struct {
+	CurrentPath string   `json:"current_path"`
+	Directories []string `json:"directories"`
 }
 
 type SQLMigrationPlanRequest struct {

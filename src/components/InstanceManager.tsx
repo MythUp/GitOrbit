@@ -1,5 +1,6 @@
 // Purpose: Manage creation and modification of instances, including install-prefill from selected repositories.
 import { FormEvent, useEffect, useState } from "react";
+import { apiClient } from "../services/apiClient";
 import { InstanceInput, InstanceRecord } from "../types/models";
 import { useInstanceFtpVersions } from "../hooks/useInstanceFtpVersions";
 
@@ -20,7 +21,11 @@ const EMPTY_FORM: InstanceInput = {
   ftpPort: 21,
   ftpUsername: "",
   ftpPassword: "",
-  ftpRemotePath: "/"
+  ftpRemotePath: "/",
+  sqlDsn: "",
+  sqlUsername: "",
+  sqlPassword: "",
+  sqlDatabase: ""
 };
 
 export default function InstanceManager({
@@ -37,6 +42,9 @@ export default function InstanceManager({
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [ftpDirectories, setFtpDirectories] = useState<string[]>([]);
+  const [ftpDirectoriesLoading, setFtpDirectoriesLoading] = useState(false);
+  const [ftpDirectoriesError, setFtpDirectoriesError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!installDraft || editingId) {
@@ -104,6 +112,41 @@ export default function InstanceManager({
     }
   }
 
+  async function browseFTPDirectories(): Promise<void> {
+    setFtpDirectoriesError(null);
+
+    if (!form.ftpHost || !form.ftpUsername || !form.ftpPassword || !form.ftpPort) {
+      setFtpDirectoriesError("Fill FTP host, port, username and password before browsing directories.");
+      return;
+    }
+
+    setFtpDirectoriesLoading(true);
+    try {
+      const response = await apiClient.listFtpDirectories({
+        host: form.ftpHost,
+        port: form.ftpPort,
+        username: form.ftpUsername,
+        password: form.ftpPassword,
+        start_path: form.ftpRemotePath || "/"
+      });
+
+      const options = [response.current_path, ...response.directories].filter(
+        (value, index, array) => array.indexOf(value) === index
+      );
+
+      setFtpDirectories(options);
+      setForm((current) => ({
+        ...current,
+        ftpRemotePath: response.current_path
+      }));
+    } catch (err) {
+      setFtpDirectoriesError(err instanceof Error ? err.message : "Unable to browse FTP directories.");
+      setFtpDirectories([]);
+    } finally {
+      setFtpDirectoriesLoading(false);
+    }
+  }
+
   return (
     <section className="panel">
       <h2>Create Instances</h2>
@@ -166,6 +209,29 @@ export default function InstanceManager({
           placeholder="Remote path"
           required
         />
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => void browseFTPDirectories()}
+          disabled={ftpDirectoriesLoading}
+        >
+          {ftpDirectoriesLoading ? "Loading folders..." : "Browse server folders"}
+        </button>
+        {ftpDirectories.length > 0 && (
+          <select
+            value={form.ftpRemotePath}
+            onChange={(event) => setForm({ ...form, ftpRemotePath: event.target.value })}
+            aria-label="Select FTP folder"
+            title="Select FTP folder"
+          >
+            {ftpDirectories.map((directory) => (
+              <option key={directory} value={directory}>
+                {directory}
+              </option>
+            ))}
+          </select>
+        )}
+        {ftpDirectoriesError && <p className="error-text">{ftpDirectoriesError}</p>}
         <input
           value={form.sshHost || ""}
           onChange={(event) => setForm({ ...form, sshHost: event.target.value })}
@@ -193,7 +259,23 @@ export default function InstanceManager({
         <input
           value={form.sqlDsn || ""}
           onChange={(event) => setForm({ ...form, sqlDsn: event.target.value })}
-          placeholder="SQL DSN (optional)"
+          placeholder="SQL DSN"
+        />
+        <input
+          value={form.sqlUsername || ""}
+          onChange={(event) => setForm({ ...form, sqlUsername: event.target.value })}
+          placeholder="SQL username"
+        />
+        <input
+          type="password"
+          value={form.sqlPassword || ""}
+          onChange={(event) => setForm({ ...form, sqlPassword: event.target.value })}
+          placeholder="SQL password"
+        />
+        <input
+          value={form.sqlDatabase || ""}
+          onChange={(event) => setForm({ ...form, sqlDatabase: event.target.value })}
+          placeholder="SQL database (optional if already created)"
         />
         <button type="submit" disabled={saving}>
           {saving ? "Saving..." : editingId ? "Update" : "Create"}

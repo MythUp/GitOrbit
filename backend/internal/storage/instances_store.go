@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -68,7 +69,7 @@ func (store *InstancesStore) SaveInstance(input models.InstanceInput) error {
 		CreatedAt: now,
 		UpdatedAt: now,
 		HasSSH:    input.SSHHost != "" && input.SSHUsername != "",
-		HasSQL:    input.SQLDSN != "",
+		HasSQL:    hasCompleteSQLConfig(input),
 	}
 
 	cfg.Items = append(cfg.Items, models.StoredInstance{
@@ -114,7 +115,7 @@ func (store *InstancesStore) UpdateInstance(id string, input models.InstanceInpu
 		cfg.Items[index].Record.Repo = input.Repo
 		cfg.Items[index].Record.UpdatedAt = now
 		cfg.Items[index].Record.HasSSH = input.SSHHost != "" && input.SSHUsername != ""
-		cfg.Items[index].Record.HasSQL = input.SQLDSN != ""
+		cfg.Items[index].Record.HasSQL = hasCompleteSQLConfig(input)
 		cfg.Items[index].EncryptedCredentials = encrypted
 		updated = true
 		break
@@ -168,7 +169,25 @@ func validateInstanceInput(input models.InstanceInput) error {
 	if input.FTPRemotePath == "" {
 		return fmt.Errorf("ftp remote path is required")
 	}
+
+	if hasAnySQLConfigField(input) && !hasCompleteSQLConfig(input) {
+		return fmt.Errorf("sql configuration requires sqlDsn, sqlUsername and sqlPassword")
+	}
+
 	return nil
+}
+
+func hasAnySQLConfigField(input models.InstanceInput) bool {
+	return strings.TrimSpace(input.SQLDSN) != "" ||
+		strings.TrimSpace(input.SQLUsername) != "" ||
+		strings.TrimSpace(input.SQLPassword) != "" ||
+		strings.TrimSpace(input.SQLDatabase) != ""
+}
+
+func hasCompleteSQLConfig(input models.InstanceInput) bool {
+	return strings.TrimSpace(input.SQLDSN) != "" &&
+		strings.TrimSpace(input.SQLUsername) != "" &&
+		strings.TrimSpace(input.SQLPassword) != ""
 }
 
 func (store *InstancesStore) readConfig() (models.InstancesConfig, error) {

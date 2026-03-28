@@ -106,6 +106,7 @@ func (api *APIServer) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/auth/github/token", api.handleSetToken)
 	mux.HandleFunc("/api/auth/github/status", api.handleGitHubAuthStatus)
 	mux.HandleFunc("/api/deploy/ftp", api.handleDeployFTP)
+	mux.HandleFunc("/api/deploy/ftp/directories", api.handleFTPDirectories)
 	mux.HandleFunc("/api/deploy/ftp/instance", api.handleDeployFTPByInstance)
 	mux.HandleFunc("/api/sql/migration-plan", api.handleSQLMigrationPlan)
 }
@@ -455,6 +456,27 @@ func (api *APIServer) handleDeployFTP(writer http.ResponseWriter, request *http.
 	writeJSON(writer, http.StatusOK, result)
 }
 
+func (api *APIServer) handleFTPDirectories(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var payload models.FTPDirectoriesRequest
+	if err := decodeJSON(request.Body, &payload); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response, err := api.deps.FTPEngine.ListDirectories(request.Context(), payload)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, response)
+}
+
 func (api *APIServer) handleDeployFTPByInstance(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
@@ -480,9 +502,16 @@ func (api *APIServer) handleDeployFTPByInstance(writer http.ResponseWriter, requ
 		return
 	}
 
-	if manifest != nil && manifest.Launcher.RequiresSQL && strings.TrimSpace(instance.SQLDSN) == "" {
-		writeError(writer, http.StatusBadRequest, "this project requires SQL but this instance has no SQL DSN configured")
-		return
+	if manifest != nil && manifest.Launcher.RequiresSQL {
+		missing := missingSQLConfigFields(instance)
+		if len(missing) > 0 {
+			writeError(
+				writer,
+				http.StatusBadRequest,
+				"this project requires SQL but this instance is missing: "+strings.Join(missing, ", ")+" (sqlDatabase is optional if database already exists)",
+			)
+			return
+		}
 	}
 
 	sourcePath, cleanup, err := api.deps.GitHub.DownloadRepositorySource(instance.Owner, instance.Repo, payload.GitRef, token)
@@ -554,8 +583,8 @@ func (api *APIServer) handleSQLMigrationPlan(writer http.ResponseWriter, request
 		return
 	}
 
-	if strings.TrimSpace(instance.SQLDSN) == "" {
-		writeError(writer, http.StatusBadRequest, "selected instance has no SQL DSN configured")
+	if missing := missingSQLConfigFields(instance); len(missing) > 0 {
+		writeError(writer, http.StatusBadRequest, "selected instance SQL config is incomplete, missing: "+strings.Join(missing, ", "))
 		return
 	}
 
@@ -630,6 +659,20 @@ func writeJSON(writer http.ResponseWriter, status int, payload any) {
 
 func writeError(writer http.ResponseWriter, status int, message string) {
 	writeJSON(writer, status, map[string]string{"error": message})
+}
+
+func missingSQLConfigFields(input models.InstanceInput) []string {
+	missing := []string{}
+	if strings.TrimSpace(input.SQLDSN) == "" {
+		missing = append(missing, "sqlDsn")
+	}
+	if strings.TrimSpace(input.SQLUsername) == "" {
+		missing = append(missing, "sqlUsername")
+	}
+	if strings.TrimSpace(input.SQLPassword) == "" {
+		missing = append(missing, "sqlPassword")
+	}
+	return missing
 }
 
 func generateOAuthState() (string, error) {

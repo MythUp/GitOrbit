@@ -4,6 +4,8 @@ import {
   DeployResult,
   DeviceFlowPollResponse,
   DeviceFlowStartResponse,
+  FTPDirectoriesRequest,
+  FTPDirectoriesResponse,
   FTPDeployByInstanceRequest,
   FTPDeployRequest,
   InstanceDetailResponse,
@@ -522,6 +524,13 @@ export const apiClient = {
 
   deployFtp(payload: FTPDeployRequest): Promise<DeployResult> {
     return request<DeployResult>("/api/deploy/ftp", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+
+  listFtpDirectories(payload: FTPDirectoriesRequest): Promise<FTPDirectoriesResponse> {
+    return request<FTPDirectoriesResponse>("/api/deploy/ftp/directories", {
       method: "POST",
       body: JSON.stringify(payload)
     });

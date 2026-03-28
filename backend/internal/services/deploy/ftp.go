@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -77,6 +78,84 @@ func (engine *FTPEngine) ReadRemoteManifestVersion(ctx context.Context, input mo
 	}
 
 	return strings.TrimSpace(manifest.Version), nil
+}
+
+func (engine *FTPEngine) ListDirectories(ctx context.Context, request models.FTPDirectoriesRequest) (models.FTPDirectoriesResponse, error) {
+	if strings.TrimSpace(request.Host) == "" || strings.TrimSpace(request.Username) == "" || strings.TrimSpace(request.Password) == "" {
+		return models.FTPDirectoriesResponse{}, fmt.Errorf("missing FTP credentials")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return models.FTPDirectoriesResponse{}, err
+	}
+
+	port := request.Port
+	if port <= 0 {
+		port = 21
+	}
+
+	address := net.JoinHostPort(request.Host, fmt.Sprintf("%d", port))
+	connection, err := ftp.Dial(address, ftp.DialWithTimeout(15*time.Second))
+	if err != nil {
+		return models.FTPDirectoriesResponse{}, fmt.Errorf("connect ftp: %w", err)
+	}
+	defer connection.Quit()
+
+	if err := connection.Login(request.Username, request.Password); err != nil {
+		return models.FTPDirectoriesResponse{}, fmt.Errorf("ftp login: %w", err)
+	}
+
+	startPath := strings.TrimSpace(request.StartPath)
+	if startPath != "" && startPath != "." {
+		if err := connection.ChangeDir(startPath); err != nil {
+			return models.FTPDirectoriesResponse{}, fmt.Errorf("change ftp directory %s: %w", startPath, err)
+		}
+	}
+
+	currentPath, err := connection.CurrentDir()
+	if err != nil {
+		if startPath != "" {
+			currentPath = startPath
+		} else {
+			currentPath = "/"
+		}
+	}
+
+	currentPath = normalizeRemoteDirectoryPath(currentPath)
+
+	entries, err := connection.List(currentPath)
+	if err != nil {
+		return models.FTPDirectoriesResponse{}, fmt.Errorf("list ftp directory %s: %w", currentPath, err)
+	}
+
+	directories := make([]string, 0, len(entries)+1)
+	if currentPath != "/" {
+		directories = append(directories, normalizeRemoteDirectoryPath(path.Dir(currentPath)))
+	}
+
+	for _, entry := range entries {
+		if entry.Type != ftp.EntryTypeFolder {
+			continue
+		}
+
+		directories = append(directories, normalizeRemoteDirectoryPath(path.Join(currentPath, entry.Name)))
+	}
+
+	sort.Strings(directories)
+	uniqueDirectories := make([]string, 0, len(directories))
+	seen := map[string]struct{}{}
+	for _, directory := range directories {
+		if _, ok := seen[directory]; ok {
+			continue
+		}
+		seen[directory] = struct{}{}
+		uniqueDirectories = append(uniqueDirectories, directory)
+	}
+
+	return models.FTPDirectoriesResponse{
+		CurrentPath: currentPath,
+		Directories: uniqueDirectories,
+	}, nil
 }
 
 func (engine *FTPEngine) Deploy(ctx context.Context, request models.FTPDeployRequest) (models.DeployResult, error) {
@@ -271,5 +350,23 @@ func normalizePath(value string) string {
 	value = strings.TrimPrefix(value, "./")
 	value = strings.TrimPrefix(value, "/")
 	value = strings.TrimSuffix(value, "/")
+	return value
+}
+
+func normalizeRemoteDirectoryPath(value string) string {
+	value = strings.TrimSpace(filepath.ToSlash(value))
+	if value == "" || value == "." {
+		return "/"
+	}
+
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+
+	value = path.Clean(value)
+	if value == "." {
+		return "/"
+	}
+
 	return value
 }
