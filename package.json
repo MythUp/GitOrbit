@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
-    "web:dev": "vite",
+    "web:dev": "node scripts/start-web-dev.mjs",
+    "web:dev:raw": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "web:build": "vite build",
     "web:preview": "vite preview",
     "backend:dev": "go run ./cmd/server"

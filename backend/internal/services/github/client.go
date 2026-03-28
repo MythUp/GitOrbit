@@ -37,6 +37,39 @@ func NewClient() *Client {
   }
 }
 
+func (client *Client) ValidateToken(token string) (bool, error) {
+  token = strings.TrimSpace(token)
+  if token == "" {
+    return false, nil
+  }
+
+  request, err := http.NewRequest(http.MethodGet, apiBaseURL+"/user", nil)
+  if err != nil {
+    return false, fmt.Errorf("build token validation request: %w", err)
+  }
+
+  request.Header.Set("Accept", "application/vnd.github+json")
+  request.Header.Set("User-Agent", "LauncherDesktop")
+  request.Header.Set("Authorization", "Bearer "+token)
+
+  response, err := client.httpClient.Do(request)
+  if err != nil {
+    return false, fmt.Errorf("run token validation request: %w", err)
+  }
+  defer response.Body.Close()
+
+  if response.StatusCode == http.StatusUnauthorized {
+    return false, nil
+  }
+
+  if response.StatusCode >= 400 {
+    payload, _ := io.ReadAll(response.Body)
+    return false, fmt.Errorf("github token validation failed with status %d: %s", response.StatusCode, string(payload))
+  }
+
+  return true, nil
+}
+
 func (client *Client) Search(query string, token string) ([]models.SearchResultItem, error) {
   if strings.TrimSpace(query) == "" {
     return []models.SearchResultItem{}, nil

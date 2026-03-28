@@ -1,11 +1,14 @@
 // Purpose: Render the home screen with all instances and quick launcher summary information.
 import { InstanceRecord } from "../types/models";
+import { useInstanceFtpVersions } from "../hooks/useInstanceFtpVersions";
 
 interface HomeViewProps {
   instances: InstanceRecord[];
 }
 
 export default function HomeView({ instances }: HomeViewProps) {
+  const ftpVersions = useInstanceFtpVersions(instances);
+
   return (
     <section className="panel">
       <h2>Home</h2>
@@ -19,6 +22,7 @@ export default function HomeView({ instances }: HomeViewProps) {
             <p>
               {instance.owner}/{instance.repo}
             </p>
+            <small>Installed FTP version: {ftpVersions[instance.id] || "checking..."}</small>
             <small>Updated: {new Date(instance.updated_at).toLocaleString()}</small>
           </article>
         ))}

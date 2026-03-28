@@ -1,6 +1,7 @@
 // Purpose: Manage creation and modification of instances, including install-prefill from selected repositories.
 import { FormEvent, useEffect, useState } from "react";
 import { InstanceInput, InstanceRecord } from "../types/models";
+import { useInstanceFtpVersions } from "../hooks/useInstanceFtpVersions";
 
 interface InstanceManagerProps {
   instances: InstanceRecord[];
@@ -28,6 +29,7 @@ export default function InstanceManager({
   onLoadInstance,
   installDraft
 }: InstanceManagerProps) {
+  const ftpVersions = useInstanceFtpVersions(instances);
   const [form, setForm] = useState<InstanceInput>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -206,6 +208,7 @@ export default function InstanceManager({
               <small>
                 SSH: {instance.has_ssh ? "yes" : "no"} | SQL: {instance.has_sql ? "yes" : "no"}
               </small>
+              <small>Installed FTP version: {ftpVersions[instance.id] || "checking..."}</small>
             </div>
             <button
               type="button"

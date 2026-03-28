@@ -91,12 +91,24 @@ export interface InstanceDetailResponse {
   input: InstanceInput;
 }
 
+export interface InstanceFTPVersionResponse {
+  instance_id: string;
+  version?: string;
+  checked_at: string;
+  error?: string;
+}
+
 export interface DeviceFlowStartResponse {
   device_code: string;
   user_code: string;
   verification_uri: string;
+  verification_uri_complete?: string;
   expires_in: number;
   interval: number;
+}
+
+export interface WebAuthStartResponse {
+  auth_url: string;
 }
 
 export interface DeviceFlowPollResponse {

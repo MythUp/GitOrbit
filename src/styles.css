@@ -64,6 +64,7 @@ body,
 
 .sidebar-icon,
 .profile-badge {
+  position: relative;
   width: 56px;
   height: 56px;
   border-radius: 18px;
@@ -159,9 +160,22 @@ body,
   box-shadow: var(--shadow);
 }
 
-.sidebar-icon.account-connected {
-  border-color: #b8ffe2;
-  box-shadow: 0 0 0 2px #6ce3b355;
+.account-status-dot {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid #2b4fcd;
+}
+
+.account-status-dot.connected {
+  background: #1ea76f;
+}
+
+.account-status-dot.disconnected {
+  background: #d4d9e6;
 }
 
 .context-item {
@@ -375,8 +389,20 @@ button:disabled {
 
 .home-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 10px;
+}
+
+.home-card {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.home-card h3,
+.home-card p,
+.home-card small {
+  margin: 0;
 }
 
 .auth-panel {
@@ -448,6 +474,10 @@ button:disabled {
   .home-card {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .home-grid {
+    grid-template-columns: 1fr;
   }
 
   .auth-actions {

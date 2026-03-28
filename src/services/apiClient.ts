@@ -7,16 +7,21 @@ import {
   FTPDeployByInstanceRequest,
   FTPDeployRequest,
   InstanceDetailResponse,
+  InstanceFTPVersionResponse,
   InstanceInput,
   InstanceRecord,
   ProfilesConfig,
   RepositoryItem,
-  SearchResultItem
+  SearchResultItem,
+  WebAuthStartResponse
 } from "../types/models";
 
 const MANIFEST_TTL_MS = 10 * 60 * 1000;
 const REPOSITORY_TTL_MS = 5 * 60 * 1000;
 const REPOSITORY_STORAGE_PREFIX = "launcher.repositories.cache.v1";
+const AUTH_STATUS_STORAGE_KEY = "launcher.github.auth.v1";
+const INSTANCE_FTP_VERSION_TTL_MS = 60 * 1000;
+const INSTANCE_FTP_VERSION_STORAGE_PREFIX = "launcher.instances.ftp-version.v1";
 
 const manifestCache = new Map<
   string,
@@ -38,6 +43,16 @@ const repositoryCache = new Map<
 
 const repositoryInFlight = new Map<string, Promise<RepositoryItem[]>>();
 
+const instanceVersionCache = new Map<
+  string,
+  {
+    value: InstanceFTPVersionResponse;
+    expiresAt: number;
+  }
+>();
+
+const instanceVersionInFlight = new Map<string, Promise<InstanceFTPVersionResponse>>();
+
 function manifestKey(owner: string, repo: string): string {
   return `${owner.trim().toLowerCase()}/${repo.trim().toLowerCase()}`;
 }
@@ -48,6 +63,105 @@ function repositoryKey(owner: string): string {
 
 function repositoryStorageKey(owner: string): string {
   return `${REPOSITORY_STORAGE_PREFIX}:${repositoryKey(owner)}`;
+}
+
+function instanceVersionStorageKey(instanceID: string): string {
+  return `${INSTANCE_FTP_VERSION_STORAGE_PREFIX}:${instanceID}`;
+}
+
+function loadCachedAuthStatus(): boolean | null {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(AUTH_STATUS_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as { connected?: boolean; savedAt?: number };
+    if (typeof parsed.connected !== "boolean") {
+      return null;
+    }
+
+    return parsed.connected;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedAuthStatus(connected: boolean): void {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      AUTH_STATUS_STORAGE_KEY,
+      JSON.stringify({
+        connected,
+        savedAt: Date.now()
+      })
+    );
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function loadInstanceVersionCacheFromStorage(instanceID: string): InstanceFTPVersionResponse | null {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(instanceVersionStorageKey(instanceID));
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as {
+      value?: InstanceFTPVersionResponse;
+      expiresAt?: number;
+    };
+
+    if (!parsed.value || !parsed.expiresAt) {
+      return null;
+    }
+
+    if (parsed.expiresAt <= Date.now()) {
+      window.localStorage.removeItem(instanceVersionStorageKey(instanceID));
+      return null;
+    }
+
+    instanceVersionCache.set(instanceID, {
+      value: parsed.value,
+      expiresAt: parsed.expiresAt
+    });
+
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+function saveInstanceVersionCache(instanceID: string, response: InstanceFTPVersionResponse): void {
+  const entry = {
+    value: response,
+    expiresAt: Date.now() + INSTANCE_FTP_VERSION_TTL_MS
+  };
+
+  instanceVersionCache.set(instanceID, entry);
+
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(instanceVersionStorageKey(instanceID), JSON.stringify(entry));
+  } catch {
+    // Ignore storage errors.
+  }
 }
 
 function loadRepositoryCacheFromStorage(owner: string): RepositoryItem[] | null {
@@ -134,9 +248,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const data = (await response.json().catch(() => ({ error: "Request failed" }))) as {
       error?: string;
+      code?: string;
     };
 
-    const errorMessage = data.error || `Request failed with status ${response.status}`;
+    const errorMessageBase = data.error || `Request failed with status ${response.status}`;
+    const errorMessage = data.code ? `${errorMessageBase} (${data.code})` : errorMessageBase;
     if (response.status === 403 && errorMessage.includes("API rate limit exceeded")) {
       throw new Error(
         "GitHub API rate limit exceeded. Please authenticate (GitHub token/device flow) or wait before retrying."
@@ -149,18 +265,56 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error && typeof error === "object") {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === "string") {
+      return maybeMessage;
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "Unknown runtime error";
+    }
+  }
+
+  return "Unknown runtime error";
+}
+
 async function invokeTauri(command: string): Promise<void> {
   if (!window.__TAURI_IPC__) {
     return;
   }
 
   const tauri = await import("@tauri-apps/api/tauri");
-  await tauri.invoke(command);
+  try {
+    await tauri.invoke(command);
+  } catch (error) {
+    throw new Error(getErrorMessage(error));
+  }
 }
 
 export const apiClient = {
   async startBackend(): Promise<void> {
-    await invokeTauri("start_backend");
+    try {
+      await invokeTauri("start_backend");
+    } catch (error) {
+      const message = getErrorMessage(error).toLowerCase();
+      if (message.includes("already uses port 3547") || message.includes("address already in use")) {
+        return;
+      }
+
+      throw new Error(getErrorMessage(error));
+    }
   },
 
   async waitForBackend(maxAttempts = 20, delayMs = 350): Promise<void> {
@@ -173,6 +327,10 @@ export const apiClient = {
       }
     }
     throw new Error("Backend did not become ready in time.");
+  },
+
+  getCachedGithubAuthStatus(): boolean | null {
+    return loadCachedAuthStatus();
   },
 
   getProfiles(): Promise<ProfilesConfig> {
@@ -282,6 +440,35 @@ export const apiClient = {
     return request<InstanceDetailResponse>(`/api/instances?id=${encoded}`);
   },
 
+  getCachedInstanceFTPVersion(instanceID: string): InstanceFTPVersionResponse | null {
+    const cached = instanceVersionCache.get(instanceID);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+
+    return loadInstanceVersionCacheFromStorage(instanceID);
+  },
+
+  refreshInstanceFTPVersion(instanceID: string): Promise<InstanceFTPVersionResponse> {
+    const pending = instanceVersionInFlight.get(instanceID);
+    if (pending) {
+      return pending;
+    }
+
+    const encoded = encodeURIComponent(instanceID);
+    const promise = request<InstanceFTPVersionResponse>(`/api/instances/ftp-version?id=${encoded}`)
+      .then((response) => {
+        saveInstanceVersionCache(instanceID, response);
+        return response;
+      })
+      .finally(() => {
+        instanceVersionInFlight.delete(instanceID);
+      });
+
+    instanceVersionInFlight.set(instanceID, promise);
+    return promise;
+  },
+
   updateInstance(id: string, instance: InstanceInput): Promise<{ status: string }> {
     const encoded = encodeURIComponent(id);
     return request<{ status: string }>(`/api/instances?id=${encoded}`, {
@@ -297,6 +484,13 @@ export const apiClient = {
     });
   },
 
+  startGithubWebFlow(): Promise<WebAuthStartResponse> {
+    return request<WebAuthStartResponse>("/api/auth/github/web/start", {
+      method: "POST",
+      body: JSON.stringify({ scopes: ["repo", "read:org"] })
+    });
+  },
+
   pollGithubDeviceFlow(deviceCode: string): Promise<DeviceFlowPollResponse> {
     return request<DeviceFlowPollResponse>("/api/auth/github/device/poll", {
       method: "POST",
@@ -304,8 +498,10 @@ export const apiClient = {
     });
   },
 
-  getGithubAuthStatus(): Promise<{ connected: boolean }> {
-    return request<{ connected: boolean }>("/api/auth/github/status");
+  async getGithubAuthStatus(): Promise<{ connected: boolean }> {
+    const response = await request<{ connected: boolean }>("/api/auth/github/status");
+    saveCachedAuthStatus(response.connected);
+    return response;
   },
 
   async setGithubToken(accessToken: string): Promise<{ status: string }> {
@@ -313,6 +509,10 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify({ access_token: accessToken })
     });
+
+    if (!accessToken.trim()) {
+      saveCachedAuthStatus(false);
+    }
 
     clearRepositoryCache();
     return result;

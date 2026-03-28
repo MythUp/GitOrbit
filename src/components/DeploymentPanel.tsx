@@ -74,6 +74,13 @@ export default function DeploymentPanel({ instances }: DeploymentPanelProps) {
         </button>
       </form>
 
+      <p>
+        <strong>Local project path:</strong> absolute path on your computer that will be uploaded to FTP.
+      </p>
+      <p>
+        <strong>Rollback on fail:</strong> restores overwritten files from backups if deployment fails mid-process.
+      </p>
+
       {error && <p className="error-text">{error}</p>}
 
       {result && (

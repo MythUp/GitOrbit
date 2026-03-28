@@ -57,11 +57,6 @@ export default function App() {
 
   useEffect(() => {
     function blockNativeContextMenu(event: MouseEvent): void {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest(".profile-badge, .folder-toggle, .sidebar-context-menu")) {
-        return;
-      }
-
       event.preventDefault();
     }
 

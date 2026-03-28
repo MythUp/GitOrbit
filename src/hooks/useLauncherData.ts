@@ -13,6 +13,26 @@ import {
 } from "../types/models";
 import { ownerDisplayName, ownerFromGithubUrl } from "../utils/github";
 
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error && typeof error === "object") {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "Unexpected error";
+    }
+  }
+
+  return "Unexpected error";
+}
+
 function buildDefaultItems(urls: string[]): SidebarProfileItem[] {
   return urls.map((url) => {
     const owner = ownerFromGithubUrl(url);
@@ -38,7 +58,7 @@ export function useLauncherData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [githubWarning, setGithubWarning] = useState<string | null>(null);
-  const [githubConnected, setGithubConnected] = useState(false);
+  const [githubConnected, setGithubConnected] = useState<boolean>(() => apiClient.getCachedGithubAuthStatus() ?? false);
 
   const [profiles, setProfiles] = useState<ProfilesConfig>(defaultProfilesConfig());
   const [selectedProfileId, setSelectedProfileId] = useState<string>("profile-MythUp");
@@ -70,7 +90,7 @@ export function useLauncherData() {
       const status = await apiClient.getGithubAuthStatus();
       setGithubConnected(status.connected);
     } catch {
-      setGithubConnected(false);
+      // Keep cached state when network validation fails temporarily.
     }
   }, []);
 
@@ -121,7 +141,7 @@ export function useLauncherData() {
     try {
       await apiClient.startBackend();
       await apiClient.waitForBackend();
-      await refreshGithubAuthStatus();
+      void refreshGithubAuthStatus();
 
       const [profilesData, instancesData] = await Promise.all([
         apiClient.getProfiles().catch(() => defaultProfilesConfig()),
@@ -151,7 +171,7 @@ export function useLauncherData() {
 
       setInstances(instancesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unexpected error");
+      setError(toErrorMessage(err));
     } finally {
       setLoading(false);
     }

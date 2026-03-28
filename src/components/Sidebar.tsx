@@ -1,5 +1,6 @@
 // Purpose: Render left navigation with icon-driven actions, avatar profile badges, and cursor-positioned context menu.
 import { MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Icon from "./Icon";
 import { SidebarFolder, SidebarProfileItem } from "../types/models";
 import { ownerFromGithubUrl } from "../utils/github";
@@ -55,6 +56,7 @@ export default function Sidebar({
   const [draggedProfileId, setDraggedProfileId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [mouseDragSourceId, setMouseDragSourceId] = useState<string | null>(null);
+  const ignoreNextClickRef = useRef(false);
 
   const profileMap = useMemo(() => {
     const map = new Map<string, SidebarProfileItem>();
@@ -106,6 +108,15 @@ export default function Sidebar({
       return;
     }
 
+    function handleMouseMove(event: MouseEvent): void {
+      const hovered = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+      const target = hovered?.closest("[data-profile-id]") as HTMLElement | null;
+      const targetId = target?.getAttribute("data-profile-id");
+      if (targetId) {
+        setDropTargetId(targetId);
+      }
+    }
+
     function finalizeMouseDrag(event: MouseEvent): void {
       const sourceId = mouseDragSourceId;
       const targetId = dropTargetId;
@@ -118,6 +129,8 @@ export default function Sidebar({
         return;
       }
 
+      ignoreNextClickRef.current = true;
+
       if (event.altKey) {
         onDropToFolder(sourceId, targetId);
       } else {
@@ -125,8 +138,10 @@ export default function Sidebar({
       }
     }
 
+    window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", finalizeMouseDrag);
     return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", finalizeMouseDrag);
     };
   }, [dropTargetId, mouseDragSourceId, onDropToFolder, onReorder]);
@@ -167,55 +182,19 @@ export default function Sidebar({
       return;
     }
 
+    event.preventDefault();
     setMouseDragSourceId(sourceId);
     setDraggedProfileId(sourceId);
     setDropTargetId(sourceId);
   }
 
-  function onMouseDragEnter(targetId: string): void {
-    if (!mouseDragSourceId) {
+  function handleProfileSelect(profileId: string): void {
+    if (ignoreNextClickRef.current) {
+      ignoreNextClickRef.current = false;
       return;
     }
 
-    setDropTargetId(targetId);
-  }
-
-  function onDragStart(event: React.DragEvent, sourceId: string): void {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/x-launcher-profile-id", sourceId);
-    event.dataTransfer.setData("text/plain", sourceId);
-    setDraggedProfileId(sourceId);
-    setDropTargetId(sourceId);
-  }
-
-  function onDragOver(event: React.DragEvent, targetId: string): void {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setDropTargetId(targetId);
-  }
-
-  function onDragEnd(): void {
-    setDraggedProfileId(null);
-    setDropTargetId(null);
-  }
-
-  function onDrop(event: React.DragEvent, targetId: string): void {
-    event.preventDefault();
-    const sourceId =
-      event.dataTransfer.getData("application/x-launcher-profile-id") ||
-      event.dataTransfer.getData("text/plain");
-    setDropTargetId(null);
-    setDraggedProfileId(null);
-
-    if (!sourceId || sourceId === targetId) {
-      return;
-    }
-
-    if (event.altKey) {
-      onDropToFolder(sourceId, targetId);
-    } else {
-      onReorder(sourceId, targetId);
-    }
+    onSelect(profileId);
   }
 
   return (
@@ -266,20 +245,16 @@ export default function Sidebar({
                 .map((item) => (
                   <button
                     key={item!.id}
+                    data-profile-id={item!.id}
                     className={`profile-badge ${
                       currentView === "repositories" && selectedId === item!.id ? "selected" : ""
                     } ${draggedProfileId === item!.id ? "dragging" : ""} ${
                       dropTargetId === item!.id ? "drop-target" : ""
                     }`}
-                    onClick={() => onSelect(item!.id)}
+                    onClick={() => handleProfileSelect(item!.id)}
                     onContextMenu={(event) => handleContextMenu(event, item!.id)}
-                    draggable
-                    onDragStart={(event) => onDragStart(event, item!.id)}
-                    onDragOver={(event) => onDragOver(event, item!.id)}
-                    onDragEnd={onDragEnd}
-                    onDrop={(event) => onDrop(event, item!.id)}
+                    draggable={false}
                     onMouseDown={(event) => onMouseDragStart(event, item!.id)}
-                    onMouseEnter={() => onMouseDragEnter(item!.id)}
                     type="button"
                     title={`${item!.name} (drag to reorder, hold Alt while dropping to create folder)`}
                   >
@@ -297,20 +272,16 @@ export default function Sidebar({
           .map((profile) => (
             <button
               key={profile.id}
+              data-profile-id={profile.id}
               className={`profile-badge ${
                 currentView === "repositories" && selectedId === profile.id ? "selected" : ""
               } ${draggedProfileId === profile.id ? "dragging" : ""} ${
                 dropTargetId === profile.id ? "drop-target" : ""
               }`}
-              onClick={() => onSelect(profile.id)}
+              onClick={() => handleProfileSelect(profile.id)}
               onContextMenu={(event) => handleContextMenu(event, profile.id)}
-              draggable
-              onDragStart={(event) => onDragStart(event, profile.id)}
-              onDragOver={(event) => onDragOver(event, profile.id)}
-              onDragEnd={onDragEnd}
-              onDrop={(event) => onDrop(event, profile.id)}
+              draggable={false}
               onMouseDown={(event) => onMouseDragStart(event, profile.id)}
-              onMouseEnter={() => onMouseDragEnter(profile.id)}
               type="button"
               title={`${profile.name} (drag to reorder, hold Alt while dropping to create folder)`}
             >
@@ -320,44 +291,46 @@ export default function Sidebar({
       </div>
 
         <button
-          className={`sidebar-icon sidebar-bottom-button ${currentView === "account" ? "active" : ""} ${
-            githubConnected ? "account-connected" : ""
-          }`}
+          className={`sidebar-icon sidebar-bottom-button ${currentView === "account" ? "active" : ""}`}
           onClick={onShowAccount}
           title="Account"
           type="button"
         >
           <Icon name="user" className="nav-icon" />
+          <span className={`account-status-dot ${githubConnected ? "connected" : "disconnected"}`} />
         </button>
 
-      {contextMenu.open && (
-        <div
+      {contextMenu.open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
             ref={contextMenuRef}
-          className="sidebar-context-menu"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="context-item"
-            onClick={() => {
-              onHide(contextMenu.profileId);
-              setContextMenu((current) => ({ ...current, open: false }));
-            }}
+            className="sidebar-context-menu"
+            onClick={(event) => event.stopPropagation()}
           >
-            Hide
-          </button>
-          <button
-            type="button"
-            className="context-item danger"
-            onClick={() => {
-              onRemove(contextMenu.profileId);
-              setContextMenu((current) => ({ ...current, open: false }));
-            }}
-          >
-            Remove
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              className="context-item"
+              onClick={() => {
+                onHide(contextMenu.profileId);
+                setContextMenu((current) => ({ ...current, open: false }));
+              }}
+            >
+              Hide (keep profile)
+            </button>
+            <button
+              type="button"
+              className="context-item danger"
+              onClick={() => {
+                onRemove(contextMenu.profileId);
+                setContextMenu((current) => ({ ...current, open: false }));
+              }}
+            >
+              Delete (remove permanently)
+            </button>
+          </div>,
+          document.body
+        )}
     </aside>
   );
 }
