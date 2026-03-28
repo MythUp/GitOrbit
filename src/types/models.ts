@@ -24,7 +24,7 @@ export interface ProfilesConfig {
 export interface LauncherCompatibility {
   compatible: boolean;
   connection_types: string[];
-  requires_sql: boolean;
+  requires_sql?: boolean;
   sql_schema_path?: string;
   database_file_path?: string;
   ssh_commands?: string[];
@@ -35,7 +35,7 @@ export interface LauncherCompatibility {
 export interface LauncherManifest {
   project_name: string;
   version: string;
-  type: "php" | "python" | "html" | "other";
+  type: "php" | "python" | "html" | "go" | "other";
   database?: string;
   launcher: LauncherCompatibility;
 }
@@ -48,6 +48,8 @@ export interface RepositoryItem {
   private: boolean;
   html_url: string;
   default_branch: string;
+  pushed_at?: string;
+  updated_at?: string;
   description: string | null;
   manifest?: LauncherManifest;
 }

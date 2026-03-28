@@ -101,7 +101,7 @@ export default function HomeView({
     if (loading || !status) {
       return (
         <button type="button" className="btn-secondary" disabled>
-          Checking...
+          Pending
         </button>
       );
     }
@@ -142,7 +142,7 @@ export default function HomeView({
       <div className="home-header">
         <div>
           <h2>Home</h2>
-          <p>All instances are available here with one-click actions inspired by a CurseForge-style workflow.</p>
+          <p>All instances are available here with one-click actions.</p>
         </div>
         <button type="button" className="btn-secondary" onClick={onCreateInstance}>
           New instance
@@ -170,7 +170,7 @@ export default function HomeView({
             <p>
               {instance.owner}/{instance.repo}
             </p>
-            <small>Installed FTP version: {ftpVersions[instance.id] || "checking..."}</small>
+            <small>Installed FTP version: {ftpVersions[instance.id] || "-"}</small>
             <small>Updated: {new Date(instance.updated_at).toLocaleString()}</small>
             {statuses[instance.id]?.latest_git_tag && (
               <small>Latest Git tag: {statuses[instance.id].latest_git_tag}</small>

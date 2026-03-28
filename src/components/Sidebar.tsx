@@ -17,9 +17,10 @@ interface SidebarProps {
   onToggleFolder: (folderId: string) => void;
   onShowSearch: () => void;
   onShowHome: () => void;
-  onShowAccount: () => void;
+  onShowAccount: (anchor: { x: number; y: number }) => void;
+  accountPopupOpen: boolean;
   githubConnected: boolean;
-  currentView: "home" | "repositories" | "search" | "account";
+  currentView: "home" | "repositories" | "search";
 }
 
 export default function Sidebar({
@@ -35,6 +36,7 @@ export default function Sidebar({
   onShowSearch,
   onShowHome,
   onShowAccount,
+  accountPopupOpen,
   githubConnected,
   currentView
 }: SidebarProps) {
@@ -280,8 +282,14 @@ export default function Sidebar({
       </div>
 
         <button
-          className={`sidebar-icon sidebar-bottom-button ${currentView === "account" ? "active" : ""}`}
-          onClick={onShowAccount}
+          className={`sidebar-icon sidebar-bottom-button ${accountPopupOpen ? "active" : ""}`}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            onShowAccount({
+              x: rect.right + 8,
+              y: rect.top
+            });
+          }}
           title="Account"
           type="button"
         >

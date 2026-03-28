@@ -165,7 +165,7 @@ func (api *APIServer) handleOAuthCallback(writer http.ResponseWriter, request *h
 	api.oauthStateExpiresAt = time.Time{}
 	api.oauthStateMu.Unlock()
 
-	renderOAuthPage(writer, http.StatusOK, "Login Approved", "GitHub authorization is complete. You can safely return to Launcher Desktop.", true)
+	renderOAuthPage(writer, http.StatusOK, "Login Approved", "GitHub authorization is complete. You can safely return to GitOrbit.", true)
 }
 
 func (api *APIServer) handleProfiles(writer http.ResponseWriter, request *http.Request) {
@@ -517,7 +517,7 @@ func (api *APIServer) handleDeployFTPByInstance(writer http.ResponseWriter, requ
 		return
 	}
 
-	if manifest != nil && manifest.Launcher.RequiresSQL {
+	if manifest != nil && manifest.Launcher.RequiresSQLConnection() {
 		missing := missingSQLConfigFields(instance)
 		if len(missing) > 0 {
 			writeError(
@@ -572,10 +572,10 @@ func (api *APIServer) handleDeployFTPByInstance(writer http.ResponseWriter, requ
 		result.Logs = append(result.Logs, fmt.Sprintf("ignore patterns applied: %d", len(ignorePatterns)))
 	}
 
-	if manifest != nil && manifest.Launcher.RequiresSQL {
+	if manifest != nil && manifest.Launcher.RequiresSQLConnection() {
 		schemaPath := resolveManifestSQLScriptPath(manifest)
 		if schemaPath == "" {
-			writeError(writer, http.StatusBadRequest, "manifest requires_sql=true but no SQL file path is defined (manifest.database, launcher.sql_schema_path, launcher.database_file_path)")
+			writeError(writer, http.StatusBadRequest, "manifest requires SQL (launcher.connection_types includes sql) but no SQL file path is defined (manifest.database, launcher.sql_schema_path, launcher.database_file_path)")
 			return
 		}
 
@@ -761,7 +761,7 @@ func renderOAuthPage(writer http.ResponseWriter, status int, title, message stri
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Launcher Desktop OAuth</title>
+	<title>GitOrbit OAuth</title>
     <style>
       :root {
         --bg-a: #eef4ff;
@@ -904,7 +904,7 @@ func renderOAuthPage(writer http.ResponseWriter, status int, title, message stri
     <header class="topbar">
       <div class="brand">
         <span class="brand-dot"></span>
-        <span>Launcher Desktop</span>
+				<span>GitOrbit</span>
       </div>
       <span style="color:#5f718b;font-size:13px;">GitHub OAuth Callback</span>
     </header>
@@ -921,7 +921,7 @@ func renderOAuthPage(writer http.ResponseWriter, status int, title, message stri
       <aside class="panel side">
         <h2>What Happens Next</h2>
         <ol class="steps">
-          <li>Switch back to Launcher Desktop.</li>
+					<li>Switch back to GitOrbit.</li>
           <li>Wait a few seconds for status refresh.</li>
           <li>If needed, start login again from Account.</li>
         </ol>

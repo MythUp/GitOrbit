@@ -41,10 +41,7 @@ export function useInstanceDeploymentStatus(instances: InstanceRecord[]) {
   }, []);
 
   const refreshAllStatuses = useCallback(async (): Promise<void> => {
-    for (const instance of instances) {
-      await refreshInstanceStatus(instance.id);
-      await new Promise((resolve) => setTimeout(resolve, 80));
-    }
+    await Promise.all(instances.map((instance) => refreshInstanceStatus(instance.id)));
   }, [instances, refreshInstanceStatus]);
 
   useEffect(() => {

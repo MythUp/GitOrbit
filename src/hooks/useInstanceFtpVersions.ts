@@ -37,39 +37,55 @@ export function useInstanceFtpVersions(instances: InstanceRecord[]): Record<stri
     });
 
     async function loadAll(): Promise<void> {
+      const cachedLabels: Record<string, string> = {};
       for (const instance of instances) {
-        if (cancelled) {
-          return;
-        }
-
         const cached = apiClient.getCachedInstanceFTPVersion(instance.id);
-        if (cached && !cancelled) {
-          setVersions((current) => ({
-            ...current,
-            [instance.id]: toVersionLabel(cached)
-          }));
+        if (cached) {
+          cachedLabels[instance.id] = toVersionLabel(cached);
+        }
+      }
+
+      if (!cancelled && Object.keys(cachedLabels).length > 0) {
+        setVersions((current) => ({
+          ...current,
+          ...cachedLabels
+        }));
+      }
+
+      const results = await Promise.all(
+        instances.map(async (instance) => {
+          const cached = apiClient.getCachedInstanceFTPVersion(instance.id);
+          try {
+            const latest = await apiClient.refreshInstanceFTPVersion(instance.id);
+            return [instance.id, toVersionLabel(latest)] as const;
+          } catch {
+            if (!cached) {
+              return [instance.id, "unavailable"] as const;
+            }
+
+            return null;
+          }
+        })
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const refreshed: Record<string, string> = {};
+      for (const result of results) {
+        if (!result) {
+          continue;
         }
 
-        try {
-          const latest = await apiClient.refreshInstanceFTPVersion(instance.id);
-          if (cancelled) {
-            return;
-          }
+        refreshed[result[0]] = result[1];
+      }
 
-          setVersions((current) => ({
-            ...current,
-            [instance.id]: toVersionLabel(latest)
-          }));
-        } catch {
-          if (!cached && !cancelled) {
-            setVersions((current) => ({
-              ...current,
-              [instance.id]: "unavailable"
-            }));
-          }
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 120));
+      if (Object.keys(refreshed).length > 0) {
+        setVersions((current) => ({
+          ...current,
+          ...refreshed
+        }));
       }
     }
 

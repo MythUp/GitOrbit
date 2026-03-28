@@ -996,6 +996,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gitorbit_desktop"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "serde",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
 name = "glib"
 version = "0.15.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1542,16 +1552,6 @@ dependencies = [
  "indexmap 1.9.3",
  "matches",
  "selectors",
-]
-
-[[package]]
-name = "launcher_desktop"
-version = "0.1.0"
-dependencies = [
- "once_cell",
- "serde",
- "tauri",
- "tauri-build",
 ]
 
 [[package]]

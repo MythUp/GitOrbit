@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -128,6 +129,15 @@ func (client *Client) ListRepositories(owner string, token string) ([]models.Rep
 	for _, repo := range repos {
 		output = append(output, repo)
 	}
+
+	sort.Slice(output, func(i, j int) bool {
+		left := repositorySortTime(output[i])
+		right := repositorySortTime(output[j])
+		if left == right {
+			return strings.ToLower(output[i].FullName) < strings.ToLower(output[j].FullName)
+		}
+		return left > right
+	})
 
 	return output, nil
 }
@@ -316,6 +326,8 @@ func (client *Client) fetchRepos(endpoint, token string) ([]models.RepositoryIte
 		HTMLURL       string `json:"html_url"`
 		Description   string `json:"description"`
 		DefaultBranch string `json:"default_branch"`
+		PushedAt      string `json:"pushed_at"`
+		UpdatedAt     string `json:"updated_at"`
 		Owner         struct {
 			Login string `json:"login"`
 		} `json:"owner"`
@@ -335,11 +347,29 @@ func (client *Client) fetchRepos(endpoint, token string) ([]models.RepositoryIte
 			Private:       item.Private,
 			HTMLURL:       item.HTMLURL,
 			DefaultBranch: item.DefaultBranch,
+			PushedAt:      item.PushedAt,
+			UpdatedAt:     item.UpdatedAt,
 			Description:   item.Description,
 		})
 	}
 
 	return repos, nil
+}
+
+func repositorySortTime(repo models.RepositoryItem) int64 {
+	for _, candidate := range []string{repo.PushedAt, repo.UpdatedAt} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+
+		parsed, err := time.Parse(time.RFC3339, candidate)
+		if err == nil {
+			return parsed.Unix()
+		}
+	}
+
+	return 0
 }
 
 func (client *Client) doJSON(method, endpoint, token string) ([]byte, int, error) {

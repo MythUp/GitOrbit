@@ -1,4 +1,4 @@
-// Purpose: Centralize frontend constants and defaults used across the launcher UI.
+// Purpose: Centralize frontend constants and defaults used across the GitOrbit UI.
 export const BACKEND_BASE_URL = "http://127.0.0.1:3547";
 
 export const DEFAULT_PROFILE_URLS = [
@@ -6,4 +6,4 @@ export const DEFAULT_PROFILE_URLS = [
   "https://github.com/Chromared"
 ];
 
-export const APP_NAME = "Launcher Desktop";
+export const APP_NAME = "GitOrbit";

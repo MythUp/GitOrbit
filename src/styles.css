@@ -1,4 +1,4 @@
-/* Purpose: Define a colorful dashboard-style UI inspired by launcher and bootstrap card patterns. */
+/* Purpose: Define the GitOrbit dashboard visual system and shared component styles. */
 :root {
   --bg-a: #eef4ff;
   --bg-b: #f6fff4;
@@ -201,6 +201,12 @@ body,
   grid-template-columns: 1fr;
   gap: 14px;
   padding-bottom: 100px;
+}
+
+.account-popup {
+  position: fixed;
+  z-index: 99998;
+  width: min(360px, calc(100vw - 24px));
 }
 
 .panel {
@@ -542,16 +548,74 @@ button:disabled {
   gap: 8px;
 }
 
-.auth-panel {
-  background: linear-gradient(155deg, #ffffff, #edf4ff);
-  border: 1px solid #d0ddf2;
-  border-radius: 18px;
-  padding: 13px;
+.auth-panel-modern {
+  background: linear-gradient(155deg, #ffffff, #eaf4ff);
+  border: 1px solid #cfddf4;
+  border-radius: 20px;
   box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 14px;
+}
+
+.account-top-row {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-header {
+  display: flex;
+  align-items: center;
   gap: 12px;
+}
+
+.account-header h3 {
+  margin: 0;
+}
+
+.account-status {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+
+.account-status.connected {
+  color: #0f7a51;
+}
+
+.account-status.disconnected {
+  color: #6b7c97;
+}
+
+.account-actions-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.account-code-card {
+  border: 1px solid #d6e2f5;
+  background: #f8fbff;
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.account-inline-actions {
+  display: flex;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.account-advanced {
+  border: 1px dashed #c2d3ee;
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  background: #ffffff;
 }
 
 .auth-avatar {
@@ -630,11 +694,11 @@ button:disabled {
     flex-direction: column;
   }
 
-  .auth-actions {
+  .account-inline-actions {
     width: 100%;
   }
 
-  .auth-actions input {
+  .account-inline-actions input {
     flex: 1 1 100%;
   }
 

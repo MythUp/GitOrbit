@@ -1,0 +1,8 @@
+{
+    "project_name": "GitOrbit",
+    "version": "3.4.1",
+    "type": "go",
+    "launcher": {
+        "compatible": false
+    }
+}

@@ -1,9 +1,9 @@
 # Purpose: Declare Rust dependencies and build configuration for the Tauri desktop shell.
 [package]
-name = "launcher_desktop"
+name = "gitorbit_desktop"
 version = "0.1.0"
-description = "Local launcher desktop shell"
-authors = ["Launcher Team"]
+description = "Local GitOrbit desktop shell"
+authors = ["GitOrbit Team"]
 edition = "2021"
 
 [build-dependencies]

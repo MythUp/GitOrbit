@@ -1,5 +1,5 @@
 // Purpose: Compose launcher navigation and route install actions into the instance workflow.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AuthPanel from "./components/AuthPanel";
 import HomeView from "./components/HomeView";
 import InstanceWizardModal from "./components/InstanceWizardModal";
@@ -12,7 +12,6 @@ import { apiClient } from "./services/apiClient";
 import { ownerFromGithubUrl } from "./utils/github";
 
 type ViewMode = "home" | "repositories" | "search";
-type ExtendedViewMode = ViewMode | "account";
 
 export default function App() {
   const {
@@ -44,11 +43,17 @@ export default function App() {
     refreshRepositories
   } = useLauncherData();
 
-  const [view, setView] = useState<ExtendedViewMode>("home");
+  const [view, setView] = useState<ViewMode>("home");
+  const [accountPopup, setAccountPopup] = useState<{ open: boolean; x: number; y: number }>({
+    open: false,
+    x: 0,
+    y: 0
+  });
   const [installDraft, setInstallDraft] = useState<{ owner: string; repo: string } | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardMode, setWizardMode] = useState<"create" | "edit">("create");
   const [editingInstanceID, setEditingInstanceID] = useState<string | null>(null);
+  const accountPopupRef = useRef<HTMLDivElement | null>(null);
   const [deployProgressByInstance, setDeployProgressByInstance] = useState<
     Record<string, { running: boolean; value: number; task: string }>
   >({});
@@ -96,6 +101,63 @@ export default function App() {
       window.removeEventListener("keydown", blockDevtoolsShortcuts, true);
     };
   }, []);
+
+  useEffect(() => {
+    if (!accountPopup.open) {
+      return;
+    }
+
+    function closePopupIfOutside(event: MouseEvent): void {
+      const target = event.target as HTMLElement | null;
+      if (!target) {
+        return;
+      }
+
+      if (target.closest(".account-popup") || target.closest(".sidebar-bottom-button")) {
+        return;
+      }
+
+      setAccountPopup((current) => ({
+        ...current,
+        open: false
+      }));
+    }
+
+    function closePopupOnEscape(event: KeyboardEvent): void {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      setAccountPopup((current) => ({
+        ...current,
+        open: false
+      }));
+    }
+
+    window.addEventListener("mousedown", closePopupIfOutside);
+    window.addEventListener("keydown", closePopupOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", closePopupIfOutside);
+      window.removeEventListener("keydown", closePopupOnEscape);
+    };
+  }, [accountPopup.open]);
+
+  useEffect(() => {
+    if (!accountPopup.open || !accountPopupRef.current) {
+      return;
+    }
+
+    const popup = accountPopupRef.current;
+    const width = popup.offsetWidth || 340;
+    const height = popup.offsetHeight || 340;
+    const maxLeft = Math.max(12, window.innerWidth - width - 12);
+    const maxTop = Math.max(12, window.innerHeight - height - 12);
+    const nextX = Math.min(Math.max(12, accountPopup.x), maxLeft);
+    const nextY = Math.min(Math.max(12, accountPopup.y), maxTop);
+
+    popup.style.left = `${nextX}px`;
+    popup.style.top = `${nextY}px`;
+  }, [accountPopup.open, accountPopup.x, accountPopup.y]);
 
   function startInstall(owner: string, repo: string): void {
     setInstallDraft({ owner, repo });
@@ -222,7 +284,7 @@ export default function App() {
   }
 
   if (loading) {
-    return <main className="app-shell">Loading launcher...</main>;
+    return <main className="app-shell">Loading GitOrbit...</main>;
   }
 
   if (error) {
@@ -236,6 +298,7 @@ export default function App() {
         folders={folders}
         selectedId={selectedProfileId}
         onSelect={(id) => {
+          setAccountPopup((current) => ({ ...current, open: false }));
           setView("repositories");
           void selectProfile(id);
         }}
@@ -260,9 +323,31 @@ export default function App() {
         onToggleFolder={(folderId) => {
           void toggleFolder(folderId);
         }}
-        onShowSearch={() => setView("search")}
-        onShowHome={() => setView("home")}
-        onShowAccount={() => setView("account")}
+        onShowSearch={() => {
+          setAccountPopup((current) => ({ ...current, open: false }));
+          setView("search");
+        }}
+        onShowHome={() => {
+          setAccountPopup((current) => ({ ...current, open: false }));
+          setView("home");
+        }}
+        onShowAccount={(anchor) => {
+          setAccountPopup((current) => {
+            if (current.open) {
+              return {
+                ...current,
+                open: false
+              };
+            }
+
+            return {
+              open: true,
+              x: anchor.x,
+              y: anchor.y
+            };
+          });
+        }}
+        accountPopupOpen={accountPopup.open}
         githubConnected={githubConnected}
         currentView={view}
       />
@@ -302,17 +387,6 @@ export default function App() {
           />
         )}
 
-        {view === "account" && (
-          <AuthPanel
-            onConnected={async () => {
-              await refreshGithubAuthStatus();
-              await refreshInstances();
-              await refreshRepositories(selectedOwner);
-              await refreshAllStatuses();
-            }}
-          />
-        )}
-
         <InstanceWizardModal
           open={wizardOpen}
           mode={wizardMode}
@@ -332,6 +406,25 @@ export default function App() {
           onLoadInstance={loadInstanceInput}
         />
       </section>
+
+      {accountPopup.open && (
+        <div ref={accountPopupRef} className="account-popup">
+          <AuthPanel
+            onClose={() => {
+              setAccountPopup((current) => ({
+                ...current,
+                open: false
+              }));
+            }}
+            onConnected={async () => {
+              await refreshGithubAuthStatus();
+              await refreshInstances();
+              await refreshRepositories(selectedOwner);
+              await refreshAllStatuses();
+            }}
+          />
+        </div>
+      )}
     </main>
   );
 }

@@ -300,7 +300,7 @@ export default function InstanceManager({
               <small>
                 SSH: {instance.has_ssh ? "yes" : "no"} | SQL: {instance.has_sql ? "yes" : "no"}
               </small>
-              <small>Installed FTP version: {ftpVersions[instance.id] || "checking..."}</small>
+              <small>Installed FTP version: {ftpVersions[instance.id] || "-"}</small>
             </div>
             <button
               type="button"

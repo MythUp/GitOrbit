@@ -67,7 +67,7 @@ export default function SearchPanel({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Try: MythUp or launcher"
+            placeholder="Try: MythUp or gitorbit"
             aria-label="Search GitHub"
           />
           <button

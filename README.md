@@ -1,8 +1,8 @@
-<!-- Purpose: Document architecture, setup, and progressive delivery details of the launcher desktop project. -->
+<!-- Purpose: Document architecture, setup, and progressive delivery details of the GitOrbit desktop project. -->
 
-# Launcher Desktop
+# GitOrbit
 
-Desktop launcher architecture inspired by Modrinth and toolbox behavior:
+Desktop deployment workspace architecture for GitHub-driven projects:
 
 - Tauri provides desktop shell and command bridge.
 - React + TypeScript provides UI and local user workflows.
@@ -11,7 +11,7 @@ Desktop launcher architecture inspired by Modrinth and toolbox behavior:
 ## Project structure
 
 ```text
-Launcher/
+  GitOrbit/
   backend/
     cmd/server/
     internal/
@@ -62,8 +62,9 @@ Launcher/
 - Drag and drop profile behavior:
   - Drop profile onto another profile: create folder.
   - Hold Shift while dropping: reorder.
-- Right-click behavior implemented with quick action prompt (`hide` or `remove`).
-- Bottom-right account and auth panel (GitHub device flow).
+- Right-click context menus for profile and instance quick actions.
+- Bottom-left account popup from sidebar icon (compact menu style, with close button).
+- Instance popup supports outside-click close, Escape close, and a header close button.
 
 ### Backend
 
@@ -84,7 +85,7 @@ Launcher/
   - rollback of replaced files (backup restore)
 - SSH engine baseline (command execution).
 - SQL migration planner endpoint to compare two refs and generate safe ALTER ADD statements + warnings.
-- SQL executor module remains a controlled stub for direct execution extension.
+- SQL executor supports direct import execution for MySQL and PostgreSQL.
 - SFTP module placeholder separated for incremental implementation.
 
 ### Tauri bridge
@@ -162,8 +163,7 @@ npm run web:build
   "type": "php",
   "launcher": {
     "compatible": true,
-    "connection_types": ["ftp"],
-    "requires_sql": true,
+    "connection_types": ["ftp", "sql"],
     "sql_schema_path": "database/schema.json",
     "ignore": [
       "actions/database.php",
@@ -174,6 +174,19 @@ npm run web:build
   }
 }
 ```
+
+Connection behavior:
+
+- `launcher.connection_types` controls required credentials by transport/feature.
+- Add `"sql"` to require SQL credentials and execute SQL import during deploy.
+- Add `"ssh"` to require SSH host/username.
+- `requires_sql` is still accepted for backward compatibility, but `connection_types` is preferred.
+
+Manifest type guidance:
+
+- `type` describes the project runtime/category and drives UI hints.
+- Recommended values currently handled by UI: `php`, `html`, `python`, `go`, `other`.
+- For this application (GitOrbit), use `"type": "go"`.
 
 Rules for `launcher.ignore`:
 

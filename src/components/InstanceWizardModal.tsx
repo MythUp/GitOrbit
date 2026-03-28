@@ -58,6 +58,7 @@ export default function InstanceWizardModal({
   onLoadInstance
 }: InstanceWizardModalProps) {
   const [form, setForm] = useState<InstanceInput>(EMPTY_FORM);
+  const [initialForm, setInitialForm] = useState<InstanceInput>(EMPTY_FORM);
   const [manifest, setManifest] = useState<LauncherManifest | null>(null);
   const [manifestLoading, setManifestLoading] = useState(false);
   const [manifestError, setManifestError] = useState<string | null>(null);
@@ -68,11 +69,18 @@ export default function InstanceWizardModal({
   const [ftpDirectoriesLoading, setFtpDirectoriesLoading] = useState(false);
   const [ftpDirectoriesError, setFtpDirectoriesError] = useState<string | null>(null);
 
-  const requiresSQL = manifest?.launcher.requires_sql === true;
+  const requiresSQL =
+    (manifest?.launcher.connection_types || []).some((connectionType) => connectionType.toLowerCase() === "sql") ||
+    manifest?.launcher.requires_sql === true;
   const requiresSSH = (manifest?.launcher.connection_types || []).some(
     (connectionType) => connectionType.toLowerCase() === "ssh"
   );
   const websiteProject = manifest?.type === "php" || manifest?.type === "html";
+
+  const isDirty = useMemo(
+    () => JSON.stringify(normalizeInput(form)) !== JSON.stringify(normalizeInput(initialForm)),
+    [form, initialForm]
+  );
 
   const manifestDatabasePath = useMemo(() => {
     const topLevelPath = manifest?.database?.trim() || "";
@@ -109,7 +117,9 @@ export default function InstanceWizardModal({
         setLoadingInstance(true);
         try {
           const loaded = await onLoadInstance(instanceID);
-          setForm(normalizeInput(loaded));
+          const nextForm = normalizeInput(loaded);
+          setForm(nextForm);
+          setInitialForm(nextForm);
         } catch (loadError) {
           setError(loadError instanceof Error ? loadError.message : "Unable to load instance details.");
         } finally {
@@ -120,18 +130,35 @@ export default function InstanceWizardModal({
 
       const owner = installDraft?.owner || "";
       const repo = installDraft?.repo || "";
-      setForm(
-        normalizeInput({
-          ...EMPTY_FORM,
-          owner,
-          repo,
-          name: repo ? `${repo}-instance` : ""
-        })
-      );
+      const nextForm = normalizeInput({
+        ...EMPTY_FORM,
+        owner,
+        repo,
+        name: repo ? `${repo}-instance` : ""
+      });
+      setForm(nextForm);
+      setInitialForm(nextForm);
     }
 
     void load();
   }, [open, mode, instanceID, installDraft, onLoadInstance]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) {
@@ -297,12 +324,22 @@ export default function InstanceWizardModal({
   }
 
   return (
-    <div className="wizard-overlay" role="dialog" aria-modal="true" aria-label="Instance options">
-      <div className="wizard-modal">
+    <div
+      className="wizard-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Instance options"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="wizard-modal" onMouseDown={(event) => event.stopPropagation()}>
         <header className="wizard-header">
           <div>
             <h3>{mode === "edit" ? "Instance options" : "Create instance"}</h3>
-            <p>All parameters are on one page for faster navigation.</p>
+            <p>All parameters are on one page.</p>
           </div>
           <button type="button" className="btn-secondary" onClick={onClose}>
             Close
@@ -334,7 +371,6 @@ export default function InstanceWizardModal({
                   placeholder="Repository"
                   required
                 />
-                {manifestLoading && <small>Loading manifest...</small>}
                 {!manifestLoading && manifest && <small>Manifest version: {manifest.version}</small>}
                 {manifestError && <small className="error-text">Manifest load failed (GitHub): {manifestError}</small>}
               </section>
@@ -384,10 +420,6 @@ export default function InstanceWizardModal({
                   ))}
                 </datalist>
 
-                {ftpDirectoriesLoading && <small>Checking FTP folders in background...</small>}
-                {!ftpDirectoriesLoading && ftpDirectories.length > 0 && (
-                  <small>{ftpDirectories.length} folder suggestions available in Remote extraction path.</small>
-                )}
                 {ftpDirectoriesError && <small className="error-text">{ftpDirectoriesError}</small>}
               </section>
 
@@ -427,8 +459,8 @@ export default function InstanceWizardModal({
                   )}
                   <small>
                     {requiresSQL
-                      ? "This project requires SQL credentials (from GitHub manifest)."
-                      : "SQL is optional unless requires_sql=true in GitHub manifest."}
+                      ? "This project requires SQL credentials (launcher.connection_types includes sql)."
+                      : "SQL is optional unless launcher.connection_types includes sql."}
                   </small>
                 </section>
               </>
@@ -496,9 +528,19 @@ export default function InstanceWizardModal({
           {error && <p className="error-text">{error}</p>}
 
           <div className="wizard-footer">
-            <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>
-              Cancel
-            </button>
+            {isDirty && (
+              <button
+                type="reset"
+                className="btn-secondary"
+                disabled={saving || loadingInstance}
+                onClick={() => {
+                  setForm(normalizeInput(initialForm));
+                  setError(null);
+                }}
+              >
+                Reset
+              </button>
+            )}
             <button type="submit" className="btn-primary" disabled={saving || loadingInstance}>
               {saving ? "Saving..." : mode === "edit" ? "Save changes" : "Create instance"}
             </button>

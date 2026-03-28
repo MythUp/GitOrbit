@@ -1,6 +1,8 @@
 // Purpose: Define backend models used by handlers, storage layers, and service modules.
 package models
 
+import "strings"
+
 type SidebarFolder struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
@@ -34,6 +36,26 @@ type LauncherCompatibility struct {
 	Ignore           []string `json:"ignore"`
 }
 
+func (compatibility LauncherCompatibility) HasConnectionType(connectionType string) bool {
+	needle := strings.ToLower(strings.TrimSpace(connectionType))
+	if needle == "" {
+		return false
+	}
+
+	for _, item := range compatibility.ConnectionTypes {
+		if strings.ToLower(strings.TrimSpace(item)) == needle {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (compatibility LauncherCompatibility) RequiresSQLConnection() bool {
+	// Backward compatibility: keep supporting legacy requires_sql=true.
+	return compatibility.HasConnectionType("sql") || compatibility.RequiresSQL
+}
+
 type LauncherManifest struct {
 	ProjectName string                `json:"project_name"`
 	Version     string                `json:"version"`
@@ -50,6 +72,8 @@ type RepositoryItem struct {
 	Private       bool              `json:"private"`
 	HTMLURL       string            `json:"html_url"`
 	DefaultBranch string            `json:"default_branch"`
+	PushedAt      string            `json:"pushed_at,omitempty"`
+	UpdatedAt     string            `json:"updated_at,omitempty"`
 	Description   string            `json:"description"`
 	Manifest      *LauncherManifest `json:"manifest,omitempty"`
 }

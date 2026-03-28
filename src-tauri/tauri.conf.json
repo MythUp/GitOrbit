@@ -7,7 +7,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "Launcher Desktop",
+    "productName": "GitOrbit",
     "version": "0.1.0"
   },
   "tauri": {
@@ -19,7 +19,7 @@
     },
     "windows": [
       {
-        "title": "Launcher Desktop",
+        "title": "GitOrbit",
         "width": 1400,
         "height": 900,
         "resizable": true
@@ -27,7 +27,7 @@
     ],
     "bundle": {
       "active": false,
-      "identifier": "com.launcher.desktop"
+      "identifier": "com.gitorbit.desktop"
     },
     "security": {
       "csp": null
