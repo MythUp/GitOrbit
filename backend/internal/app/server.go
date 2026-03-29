@@ -370,6 +370,12 @@ func (api *APIServer) handlePollDeviceFlow(writer http.ResponseWriter, request *
 		return
 	}
 
+	if err := api.deps.TokenStore.Save(response.AccessToken); err != nil {
+		api.logger.Printf("failed to persist device flow token: %v", err)
+		writeError(writer, http.StatusInternalServerError, "token could not be saved")
+		return
+	}
+
 	writeJSON(writer, http.StatusOK, response)
 }
 

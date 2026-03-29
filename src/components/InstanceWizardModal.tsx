@@ -339,7 +339,6 @@ export default function InstanceWizardModal({
         <header className="wizard-header">
           <div>
             <h3>{mode === "edit" ? "Instance options" : "Create instance"}</h3>
-            <p>All parameters are on one page.</p>
           </div>
           <button type="button" className="btn-secondary" onClick={onClose}>
             Close
@@ -457,11 +456,6 @@ export default function InstanceWizardModal({
                   ) : (
                     <small>No SQL import file path in manifest (manifest.database or launcher.sql_schema_path).</small>
                   )}
-                  <small>
-                    {requiresSQL
-                      ? "This project requires SQL credentials (launcher.connection_types includes sql)."
-                      : "SQL is optional unless launcher.connection_types includes sql."}
-                  </small>
                 </section>
               </>
 

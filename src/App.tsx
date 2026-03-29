@@ -148,15 +148,38 @@ export default function App() {
     }
 
     const popup = accountPopupRef.current;
-    const width = popup.offsetWidth || 340;
-    const height = popup.offsetHeight || 340;
-    const maxLeft = Math.max(12, window.innerWidth - width - 12);
-    const maxTop = Math.max(12, window.innerHeight - height - 12);
-    const nextX = Math.min(Math.max(12, accountPopup.x), maxLeft);
-    const nextY = Math.min(Math.max(12, accountPopup.y), maxTop);
+    const positionPopup = (): void => {
+      const width = popup.offsetWidth || 340;
+      const height = popup.offsetHeight || 340;
+      const maxLeft = Math.max(12, window.innerWidth - width - 12);
+      const maxTop = Math.max(12, window.innerHeight - height - 12);
+      const nextX = Math.min(Math.max(12, accountPopup.x), maxLeft);
+      const nextY = Math.min(Math.max(12, accountPopup.y), maxTop);
 
-    popup.style.left = `${nextX}px`;
-    popup.style.top = `${nextY}px`;
+      popup.style.left = `${nextX}px`;
+      popup.style.top = `${nextY}px`;
+    };
+
+    positionPopup();
+
+    function handleResize(): void {
+      positionPopup();
+    }
+
+    window.addEventListener("resize", handleResize);
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => {
+        positionPopup();
+      });
+      observer.observe(popup);
+    }
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      observer?.disconnect();
+    };
   }, [accountPopup.open, accountPopup.x, accountPopup.y]);
 
   function startInstall(owner: string, repo: string): void {
@@ -407,24 +430,25 @@ export default function App() {
         />
       </section>
 
-      {accountPopup.open && (
-        <div ref={accountPopupRef} className="account-popup">
-          <AuthPanel
-            onClose={() => {
-              setAccountPopup((current) => ({
-                ...current,
-                open: false
-              }));
-            }}
-            onConnected={async () => {
-              await refreshGithubAuthStatus();
-              await refreshInstances();
-              await refreshRepositories(selectedOwner);
-              await refreshAllStatuses();
-            }}
-          />
-        </div>
-      )}
+      <div
+        ref={accountPopupRef}
+        className={`account-popup ${accountPopup.open ? "open" : "closed"}`}
+      >
+        <AuthPanel
+          onClose={() => {
+            setAccountPopup((current) => ({
+              ...current,
+              open: false
+            }));
+          }}
+          onConnected={async () => {
+            await refreshGithubAuthStatus();
+            await refreshInstances();
+            await refreshRepositories(selectedOwner);
+            await refreshAllStatuses();
+          }}
+        />
+      </div>
     </main>
   );
 }

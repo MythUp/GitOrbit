@@ -250,9 +250,6 @@ export default function AuthPanel({ onConnected, onClose }: AuthPanelProps) {
             <p className={`account-status ${connected ? "connected" : "disconnected"}`}>{status}</p>
           </div>
         </div>
-        <button type="button" className="btn-secondary" onClick={onClose}>
-          Close
-        </button>
       </div>
 
       {!connected ? (

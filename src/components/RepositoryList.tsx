@@ -1,5 +1,5 @@
 // Purpose: Display repositories for the selected profile and trigger installation for compatible projects.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiClient } from "../services/apiClient";
 import { RepositoryItem } from "../types/models";
 
@@ -12,39 +12,62 @@ interface RepositoryListProps {
 
 export default function RepositoryList({ owner, repositories, onInstall, loading }: RepositoryListProps) {
   const [compatibilityMap, setCompatibilityMap] = useState<Record<number, boolean>>({});
+  const compatibilityMapRef = useRef<Record<number, boolean>>({});
+
+  useEffect(() => {
+    compatibilityMapRef.current = compatibilityMap;
+  }, [compatibilityMap]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function resolveCompatibility(): Promise<void> {
-      setCompatibilityMap({});
-      const next: Record<number, boolean> = {};
+      const validIDs = new Set(repositories.map((repo) => repo.id));
+      const base: Record<number, boolean> = {};
+
+      Object.entries(compatibilityMapRef.current).forEach(([id, compatible]) => {
+        const numericID = Number(id);
+        if (!Number.isNaN(numericID) && validIDs.has(numericID)) {
+          base[numericID] = compatible;
+        }
+      });
 
       for (const repo of repositories) {
-        if (cancelled) {
-          return;
-        }
-
         if (repo.manifest) {
-          next[repo.id] = Boolean(repo.manifest.launcher.compatible);
-          setCompatibilityMap({ ...next });
-          continue;
+          base[repo.id] = Boolean(repo.manifest.launcher.compatible);
         }
-
-        try {
-          const item = await apiClient.fetchManifest(repo.owner, repo.name);
-          next[repo.id] = Boolean(item.manifest?.launcher.compatible);
-        } catch (error) {
-          next[repo.id] = false;
-          if (error instanceof Error && error.message.includes("rate limit")) {
-            setCompatibilityMap({ ...next });
-            return;
-          }
-        }
-
-        setCompatibilityMap({ ...next });
-        await new Promise((resolve) => setTimeout(resolve, 80));
       }
+
+      if (!cancelled) {
+        setCompatibilityMap(base);
+      }
+
+      const unresolved = repositories.filter((repo) => base[repo.id] === undefined);
+      if (unresolved.length === 0) {
+        return;
+      }
+
+      const resolved = await Promise.all(
+        unresolved.map(async (repo) => {
+          try {
+            const item = await apiClient.fetchManifest(repo.owner, repo.name);
+            return [repo.id, Boolean(item.manifest?.launcher.compatible)] as const;
+          } catch {
+            return [repo.id, false] as const;
+          }
+        })
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const next: Record<number, boolean> = { ...base };
+      resolved.forEach(([id, compatible]) => {
+        next[id] = compatible;
+      });
+
+      setCompatibilityMap(next);
     }
 
     void resolveCompatibility();
